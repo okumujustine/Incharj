@@ -1,15 +1,9 @@
-//! Database query functions for collecting PostgreSQL statistics
-
 use anyhow::{Context, Result};
 use tokio_postgres::Client;
 
+use crate::collector::normalizer::{fingerprint, normalize_query};
 use crate::models::QueryStat;
-use crate::collector::normalizer::{normalize_query, fingerprint};
 
-/// Collects database metadata (name and version).
-/// 
-/// # Returns
-/// A tuple of (database_name, database_version)
 pub async fn collect_meta(client: &Client) -> Result<(String, String)> {
     let row = client
         .query_one("SELECT current_database()", &[])
@@ -28,7 +22,6 @@ pub async fn collect_meta(client: &Client) -> Result<(String, String)> {
     Ok((db_name, db_version))
 }
 
-/// Checks if the pg_stat_statements extension is installed.
 pub async fn has_pg_stat_statements(client: &Client) -> Result<bool> {
     let row = client
         .query_one(
@@ -41,11 +34,6 @@ pub async fn has_pg_stat_statements(client: &Client) -> Result<bool> {
     Ok(row.get(0))
 }
 
-/// Collects the top queries by total execution time from pg_stat_statements.
-/// 
-/// # Arguments
-/// * `client` - The database client
-/// * `limit` - Maximum number of queries to return
 pub async fn collect_top_queries(client: &Client, limit: i32) -> Result<Vec<QueryStat>> {
     let rows = client
         .query(

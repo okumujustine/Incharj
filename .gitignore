@@ -4,8 +4,8 @@
 # Cargo lock (optional for binaries)
 # Cargo.lock
 
-# Environment files
-.env
+# Config file (contains secrets - users create their own)
+pgdoctor.yaml
 
 # IDE
 .idea/
@@ -15,4 +15,3 @@
 
 # macOS
 .DS_Store
-.env

@@ -1,9 +1,13 @@
 [package]
 name = "pgdoctor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Local Postgres diagnostic agent"
 authors = ["okumujustine"]
+license = "MIT"
+repository = "https://github.com/okumujustine/pgdoctor-cli"
+keywords = ["postgres", "monitoring", "diagnostics", "database"]
+categories = ["command-line-utilities", "database"]
 
 [lib]
 name = "pgdoctor"
@@ -20,9 +24,13 @@ deadpool-postgres = "0.12"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-dotenvy = "0.15"
+serde_yaml = "0.9"
 anyhow = "1.0"
 thiserror = "1.0"
 regex = "1.10"
 sha2 = "0.10"
 hex = "0.4"
+ctrlc = "3.4"
+chrono = "0.4"
+dirs = "5.0"
+cron = "0.12"

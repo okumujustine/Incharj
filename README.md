@@ -1,136 +1,136 @@
 # pgdoctor
 
-A local Postgres diagnostic agent written in Rust.
+A lightweight PostgreSQL monitoring agent written in Rust. Collects query statistics from `pg_stat_statements` and uploads them to a remote endpoint for analysis.
+
+[![Release](https://img.shields.io/github/v/release/okumujustine/pgdoctor-cli-rust)](https://github.com/okumujustine/pgdoctor-cli-rust/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 
-- Collect database metadata and performance statistics
-- Query `pg_stat_statements` for top queries by execution time
-- Upload snapshots to a remote API endpoint
-- Query normalization and fingerprinting
+- **Query Collection**: Captures top queries from `pg_stat_statements`
+- **Multi-Database Support**: Monitor multiple PostgreSQL databases with one agent
+- **Query Fingerprinting**: Normalizes queries for aggregation
+- **Daemon Mode**: Run continuously with configurable intervals
+- **Retry Logic**: Automatic retries with exponential backoff
+- **Signal Handling**: Graceful shutdown on SIGINT/SIGTERM
 
-## Installation
+## Quick Start
 
-### macOS (Apple Silicon)
+### Installation (macOS ARM64)
 
 ```bash
-# Download the latest release
-curl -LO https://github.com/okumujustine/pgdoctor-cli/releases/latest/download/pgdoctor-macos-arm64.tar.gz
-
-# Extract
+curl -LO https://github.com/okumujustine/pgdoctor-cli-rust/releases/latest/download/pgdoctor-macos-arm64.tar.gz
 tar -xzf pgdoctor-macos-arm64.tar.gz
-
-# Move to a directory in your PATH
 sudo mv pgdoctor /usr/local/bin/
-
-# Verify installation
-pgdoctor --version
 ```
 
-### Build from Source
-
-Requirements:
-- Rust 1.80+ (for `LazyLock` support)
+### Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/okumujustine/pgdoctor-cli.git
-cd pgdoctor-cli
+# 1. Generate config file
+pgdoctor config init
 
-# Build release binary
-cargo build --release
+# 2. Edit pgdoctor.yaml with your settings
+#    - Add your database connection strings
+#    - Add your API endpoint and token
 
-# Install globally
-cargo install --path .
+# 3. Test connection
+pgdoctor snapshot
 
-# Or manually move binary
-sudo mv target/release/pgdoctor /usr/local/bin/
+# 4. Start monitoring
+pgdoctor daemon start
 ```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `snapshot` | Collect and print statistics as JSON |
+| `upload` | Collect and upload to API |
+| `daemon` | Run in foreground (Ctrl+C to stop) |
+| `daemon start` | Start as background process |
+| `daemon stop` | Stop background daemon |
+| `daemon status` | Check daemon status |
+| `daemon logs` | View daemon logs |
+| `config init` | Generate sample config |
+| `config show` | Show current configuration |
+| `config path` | Show config file locations |
+| `--version` | Print version |
 
 ## Configuration
 
-pgdoctor requires environment variables for configuration. You can set them in two ways:
+Create a config file with `pgdoctor config init`, then edit `pgdoctor.yaml`:
 
-### Option 1: Shell Profile (Recommended for global CLI)
+```yaml
+endpoint: "https://api.example.com/api/snapshots"
+token: "your-api-token"
+interval: 300  # default interval in seconds (30-3600)
+limit: 20      # max queries per snapshot (1-200)
 
-Add to your `~/.zshrc` or `~/.bashrc`:
+# Two scheduling modes available per database:
+#   interval: continuous collection every N seconds
+#   cron: scheduled collection using cron expression
+#
+# Cron format: "sec min hour day month weekday year"
+# Examples:
+#   "0 */5 * * * * *" = every 5 minutes
+#   "0 0 * * * * *"   = every hour
+#   "0 0 3 * * * *"   = daily at 3am
+#   "0 0 9-17 * * MON-FRI *" = hourly during business hours
 
-```bash
-export PGDOCTOR_DSN="postgres://username:password@localhost:5432/database_name"
-export PGDOCTOR_ENDPOINT="https://your-api-endpoint.com"
-export PGDOCTOR_TOKEN="your-api-token"
-export PGDOCTOR_LIMIT=20
+databases:
+  - name: "production"
+    dsn: "postgres://user:pass@prod:5432/app"
+    interval: 60  # interval-based: every 60 seconds
+    tags: ["production", "critical"]
+
+  - name: "analytics"
+    dsn: "postgres://user:pass@analytics:5432/app"
+    cron: "0 */15 * * * * *"  # cron-based: every 15 minutes
+    tags: ["analytics"]
+
+  - name: "backup"
+    dsn: "postgres://user:pass@backup:5432/app"
+    cron: "0 0 2 * * * *"  # cron-based: daily at 2am
+    tags: ["backup"]
+
+  - name: "development"
+    dsn: "postgres://localhost:5432/app_dev"
+    enabled: false  # Skip this database (uses default interval when enabled)
 ```
 
-Then reload your shell:
+### Schedule Modes
 
-```bash
-source ~/.zshrc
-```
+| Mode | Use Case | Example |
+|------|----------|---------|
+| `interval` | Real-time monitoring, continuous metrics | `interval: 60` (every 60s) |
+| `cron` | Scheduled jobs, off-peak collection, cost control | `cron: "0 0 3 * * * *"` (daily at 3am) |
 
-### Option 2: `.env` File (Per-project)
+**Note:** Each database can use either `interval` or `cron`, but not both.
 
-Create a `.env` file in the directory where you run pgdoctor:
+### Config File Search Order
 
-```bash
-PGDOCTOR_DSN=postgres://username:password@localhost:5432/database_name
-PGDOCTOR_ENDPOINT=https://your-api-endpoint.com
-PGDOCTOR_TOKEN=your-api-token
-PGDOCTOR_LIMIT=20
-```
-
-### Environment Variables Reference
-
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `PGDOCTOR_DSN` | PostgreSQL connection string | Yes | - |
-| `PGDOCTOR_LIMIT` | Max queries to collect (1-200) | No | 10 |
-| `PGDOCTOR_ENDPOINT` | API endpoint for uploads | For `upload` command | - |
-| `PGDOCTOR_TOKEN` | API authentication token | For `upload` command | - |
-
-### PostgreSQL Connection String Format
-
-```
-postgres://[user]:[password]@[host]:[port]/[database]
-```
-
-Examples:
-```bash
-# Local database
-PGDOCTOR_DSN="postgres://postgres:password@localhost:5432/mydb"
-
-# Remote database with SSL
-PGDOCTOR_DSN="postgres://user:pass@db.example.com:5432/mydb?sslmode=require"
-```
+1. `$PGDOCTOR_CONFIG` (environment variable)
+2. `./pgdoctor.yaml` (current directory)
+3. User config directory:
+   - macOS: `~/Library/Application Support/pgdoctor/config.yaml`
+   - Linux: `~/.config/pgdoctor/config.yaml`
+   - Windows: `%APPDATA%\pgdoctor\config.yaml`
+4. `/etc/pgdoctor/config.yaml` (system-wide, Unix only)
 
 ## Prerequisites
 
-For full functionality, enable the `pg_stat_statements` extension in PostgreSQL:
+Enable `pg_stat_statements` in PostgreSQL:
 
 ```sql
--- Connect to your database as superuser
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 ```
 
-## Usage
+## Documentation
 
-### Check version
-
-```bash
-pgdoctor --version
-```
-
-### Collect and print snapshot
-
-```bash
-pgdoctor snapshot
-```
-
-### Collect and upload snapshot
-
-```bash
-pgdoctor upload
-```
+- [CLI Reference](docs/CLI.md) - All commands and options
+- [Configuration Guide](docs/CONFIGURATION.md) - Detailed config options
+- [Daemon Mode](docs/DAEMON.md) - Running as a service
 
 ## Example Output
 
@@ -140,32 +140,29 @@ pgdoctor upload
     "db_name": "mydb",
     "db_version": "PostgreSQL 16.1"
   },
-  "has_pg_stat_statements": true,
   "top_queries": [
     {
-      "fingerprint": "abc123...",
+      "fingerprint": "a1b2c3d4",
       "normalized_query": "SELECT * FROM users WHERE id = ?",
-      "calls": 1000,
-      "total_exec_time_ms": 5432.1,
-      "mean_exec_time_ms": 5.43,
-      "rows": 1000
+      "calls": 1523,
+      "total_exec_time_ms": 45.12,
+      "mean_exec_time_ms": 0.029,
+      "rows": 1523
     }
   ]
 }
 ```
 
-## Troubleshooting
+## Building from Source
 
-### "PGDOCTOR_DSN is required"
-Make sure you've set the `PGDOCTOR_DSN` environment variable either in your shell profile or in a `.env` file.
+Requirements:
+- Rust 1.80+ (for `LazyLock`)
 
-### "connection refused"
-Check that PostgreSQL is running and the connection string is correct.
-
-### "pg_stat_statements not found"
-The extension is optional, but to enable it run:
-```sql
-CREATE EXTENSION pg_stat_statements;
+```bash
+git clone https://github.com/okumujustine/pgdoctor-cli-rust.git
+cd pgdoctor-cli-rust
+cargo build --release
+sudo cp target/release/pgdoctor /usr/local/bin/
 ```
 
 ## License

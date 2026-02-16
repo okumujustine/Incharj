@@ -1,29 +1,11 @@
-//! Query normalization and fingerprinting utilities
-
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
 
-// Compile regexes once using LazyLock (stable in Rust 1.80+)
-static RE_SINGLE_QUOTED: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"'(?:''|[^'])*'").unwrap());
-static RE_NUMBER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b-?\d+(\.\d+)?\b").unwrap());
-static RE_WS: LazyLock<Regex> = 
-    LazyLock::new(|| Regex::new(r"\s+").unwrap());
+static RE_SINGLE_QUOTED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'(?:''|[^'])*'").unwrap());
+static RE_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b-?\d+(\.\d+)?\b").unwrap());
+static RE_WS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
-/// Normalizes a SQL query by replacing literals with placeholders.
-/// 
-/// This function:
-/// - Replaces single-quoted strings with `?`
-/// - Replaces numeric literals with `?`
-/// - Collapses multiple whitespace characters into a single space
-/// 
-/// # Arguments
-/// * `q` - The SQL query to normalize
-/// 
-/// # Returns
-/// The normalized query string
 pub fn normalize_query(q: &str) -> String {
     let s = q.trim();
     let s = RE_SINGLE_QUOTED.replace_all(s, "?");
@@ -32,13 +14,6 @@ pub fn normalize_query(q: &str) -> String {
     s.to_string()
 }
 
-/// Generates a SHA-256 fingerprint for a normalized query.
-/// 
-/// # Arguments
-/// * `normalized` - The normalized query string
-/// 
-/// # Returns
-/// A hex-encoded SHA-256 hash of the query
 pub fn fingerprint(normalized: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(normalized.as_bytes());
