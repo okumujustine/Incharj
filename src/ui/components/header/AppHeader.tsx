@@ -7,6 +7,7 @@
  * - FolderStatus: Shows which folders are being searched
  * 
  * This is the primary header component used in the App.
+ * Supports responsive modes for different terminal sizes.
  */
 
 import React from "react";
@@ -20,15 +21,28 @@ interface AppHeaderProps {
   folders: string[];
   /** List of file extensions being indexed (currently unused but kept for future) */
   extensions: string[];
+  /** Responsive mode: 'full' | 'compact' | 'minimal' */
+  mode?: "full" | "compact" | "minimal";
+  /** Maximum width available */
+  maxWidth?: number;
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({ folders, extensions }) => (
-  <Box flexDirection="column" width="100%" alignItems="center" marginBottom={1}>
-    <AppBranding />
-    <QuickTips />
-    <FolderStatus folders={folders} />
-  </Box>
-);
+export const AppHeader: React.FC<AppHeaderProps> = ({ 
+  folders, 
+  extensions,
+  mode = "full",
+  maxWidth 
+}) => {
+  const isMinimal = mode === "minimal";
+  
+  return (
+    <Box flexDirection="column" width="100%" alignItems="center" marginBottom={isMinimal ? 0 : 1}>
+      <AppBranding mode={mode} maxWidth={maxWidth} />
+      {!isMinimal && <QuickTips />}
+      {!isMinimal && <FolderStatus folders={folders} />}
+    </Box>
+  );
+};
 
 // Re-export as Header for backward compatibility
 export { AppHeader as Header };

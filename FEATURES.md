@@ -13,6 +13,7 @@ A terminal-based local document search CLI with full-text search.
 - [x] Occurrence counting in results
 - [x] Multiple color themes (Cyan, Vibrant, Minimal, Monochrome, Ocean)
 - [x] Stats footer with document count and search time
+- [x] Text PDF indexing support (non-OCR)
 
 ---
 

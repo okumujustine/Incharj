@@ -14,6 +14,7 @@
 
 import React from "react";
 import { Box, Text } from "ink";
+import { useTheme } from "../../theme/index.js";
 
 interface SearchResultsHeaderProps {
   /** Total number of documents that match the search */
@@ -22,6 +23,8 @@ interface SearchResultsHeaderProps {
   displayedResults: number;
   /** The search query string */
   query: string;
+  /** Whether header is shown as background behind modal */
+  dimmed?: boolean;
 }
 
 /**
@@ -35,19 +38,25 @@ export const SearchResultsHeader: React.FC<SearchResultsHeaderProps> = ({
   totalResults,
   displayedResults,
   query,
+  dimmed = false,
 }) => {
+  const { colors } = useTheme();
   const isTruncated = totalResults > displayedResults;
 
   return (
-    <Box marginBottom={1}>
-      <Text color="green" bold>
-        {totalResults} {pluralizeDocument(totalResults)} contain "{query}"
-        {/* Show truncation indicator if not all results are displayed */}
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        <Text color={dimmed ? colors.textDim : colors.primary}>◆</Text>
+        <Text color={dimmed ? colors.textDim : colors.text} bold={!dimmed}> {totalResults} {pluralizeDocument(totalResults)} </Text>
+        <Text dimColor>matching </Text>
+        <Text color={dimmed ? colors.textDim : colors.highlight}>"{query}"</Text>
         {isTruncated && (
-          <Text dimColor> (showing {displayedResults})</Text>
+          <Text color={colors.textDim}> · showing {displayedResults}</Text>
         )}
-        :
-      </Text>
+      </Box>
+      <Box>
+        <Text color={colors.textDim}>{"─".repeat(50)}</Text>
+      </Box>
     </Box>
   );
 };

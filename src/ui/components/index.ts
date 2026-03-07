@@ -24,3 +24,8 @@ export { SearchInput } from "./SearchInput.js";
 export { PathBar } from "./PathBar.js";
 export { CommandPalette } from "./CommandPalette.js";
 export { IndexResults } from "./IndexResults.js";
+export { SplashScreen } from "./SplashScreen.js";
+export { FilesView } from "./FilesView.js";
+export { ThemeSelector } from "./ThemeSelector.js";
+export { FilePreview } from "./FilePreview.js";
+export { IndexScopeSelector } from "./IndexScopeSelector.js";

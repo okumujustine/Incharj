@@ -1,15 +1,13 @@
 /**
  * SearchEmptyStates Component
  * 
- * Renders appropriate empty state messages when:
- * 1. User hasn't typed enough to search (initial/typing state)
- * 2. No results were found for the query
- * 
- * These provide helpful guidance to the user about what to do next.
+ * Clean, helpful empty state messages for various scenarios.
+ * Modern aesthetic with subtle guidance.
  */
 
 import React from "react";
 import { Box, Text } from "ink";
+import { useTheme } from "../../theme/index.js";
 
 /** Container height to maintain consistent layout */
 const CONTAINER_HEIGHT = 8;
@@ -39,16 +37,38 @@ const EmptyStateContainer: React.FC<EmptyStateContainerProps> = ({ children }) =
  * Provides keyboard navigation hints to the user.
  */
 export const SearchHint: React.FC = () => (
-  <EmptyStateContainer>
-    <Text bold color="cyan">Quick Start</Text>
-    <Box marginTop={1} flexDirection="column">
-      <Text dimColor>• Type to search your documents</Text>
-      <Text dimColor>• Use <Text color="yellow">↑↓</Text> to navigate results</Text>
-      <Text dimColor>• Press <Text color="yellow">Enter</Text> to open file</Text>
-      <Text dimColor>• Type <Text color="yellow">/</Text> for commands</Text>
-    </Box>
-  </EmptyStateContainer>
+  <SearchHintContent />
 );
+
+const SearchHintContent: React.FC = () => {
+  const { colors } = useTheme();
+
+  return (
+    <EmptyStateContainer>
+      <Box
+        borderStyle="round"
+        borderColor={colors.border}
+        paddingX={2}
+        flexDirection="column"
+        alignItems="center"
+      >
+        <Text dimColor>Shortcuts</Text>
+        <Box>
+          <Text color={colors.highlight}>↑↓</Text>
+          <Text dimColor> move </Text>
+          <Text color={colors.textDim}>•</Text>
+          <Text dimColor> </Text>
+          <Text color={colors.highlight}>↵</Text>
+          <Text dimColor> open </Text>
+          <Text color={colors.textDim}>•</Text>
+          <Text dimColor> </Text>
+          <Text color={colors.highlight}>/</Text>
+          <Text dimColor> commands</Text>
+        </Box>
+      </Box>
+    </EmptyStateContainer>
+  );
+};
 
 interface NoResultsProps {
   /** The search query that yielded no results */
@@ -62,12 +82,32 @@ interface NoResultsProps {
  * Suggests the user try different search terms.
  */
 export const NoResults: React.FC<NoResultsProps> = ({ query }) => (
-  <EmptyStateContainer>
-    <Text color="yellow">No documents found for "{query}"</Text>
-    <Box marginTop={1} flexDirection="column">
-      <Text dimColor>• Try a different search term</Text>
-      <Text dimColor>• Run <Text color="cyan">/index</Text> to index more files</Text>
-      <Text dimColor>• Check indexed folders in config</Text>
-    </Box>
-  </EmptyStateContainer>
+  <NoResultsContent query={query} />
 );
+
+const NoResultsContent: React.FC<NoResultsProps> = ({ query }) => {
+  const { colors } = useTheme();
+
+  return (
+    <EmptyStateContainer>
+      <Box marginBottom={1}>
+        <Text color={colors.textDim}>─────────────────────</Text>
+      </Box>
+      <Box>
+        <Text color={colors.textDim}>○ </Text>
+        <Text dimColor>No matches for </Text>
+        <Text color={colors.highlight}>"{query}"</Text>
+      </Box>
+      <Box marginTop={1} flexDirection="column" alignItems="center">
+        <Text dimColor>Try different terms or </Text>
+        <Box>
+          <Text color={colors.primary}>/index</Text>
+          <Text dimColor> more files</Text>
+        </Box>
+      </Box>
+      <Box marginTop={1}>
+        <Text color={colors.textDim}>─────────────────────</Text>
+      </Box>
+    </EmptyStateContainer>
+  );
+};
