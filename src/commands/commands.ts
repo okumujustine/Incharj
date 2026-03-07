@@ -13,6 +13,12 @@ export const commands: Command[] = [
     action: "index",
   },
   {
+    name: "files",
+    shortcut: "f",
+    description: "View indexed files",
+    action: "files",
+  },
+  {
     name: "reset",
     shortcut: "r",
     description: "Clear all indexed data",
@@ -23,6 +29,12 @@ export const commands: Command[] = [
     shortcut: "t",
     description: "Switch color theme",
     action: "theme",
+  },
+  {
+    name: "config",
+    shortcut: "c",
+    description: "Show active config path and summary",
+    action: "config",
   },
   {
     name: "quit",

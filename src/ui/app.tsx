@@ -19,12 +19,14 @@
  * - Real-time search statistics
  */
 
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { search } from "../search/query.js";
 import { indexWithProgress, IndexResult, IndexProgress } from "../indexer/indexer.js";
-import { resetDb, getDocumentCount } from "../db/db.js";
+import { resetDb, getDocumentCount, getIndexedFiles, IndexedFile } from "../db/db.js";
 import { 
   Header, 
   SearchInput, 
@@ -32,17 +34,45 @@ import {
   CommandPalette, 
   IndexResults,
   ProgressBar,
-  StatsFooter
+  StatsFooter,
+  SplashScreen,
+  FilesView,
+  ThemeSelector,
+  FilePreview,
+  IndexScopeSelector
 } from "./components/index.js";
 import { filterCommands, getCommandArgs, Command } from "../commands/index.js";
-import { ThemeProvider, useTheme, themes, Theme } from "./theme/index.js";
+import { ThemeProvider, useTheme, themes, getThemeByName } from "./theme/index.js";
+import { AppConfigState, loadAppConfig } from "./hooks/useAppConfig.js";
 import os from "node:os";
 
 /** Application display modes */
-type AppMode = "search" | "command" | "indexing" | "indexed";
+type AppMode = "search" | "command" | "indexing" | "indexed" | "files" | "themes" | "scope";
 
-/** Content area height for consistent vertical layout */
-const CONTENT_HEIGHT = 14;
+/** Splash screen duration in milliseconds */
+const SPLASH_DURATION_MS = 2600;
+
+/** Header height by mode (approximate lines) */
+const HEADER_HEIGHTS = {
+  full: 12,     // ASCII art (6) + separator (1) + tagline (1) + tips (1) + folders (1) + padding (2)
+  compact: 6,   // Compact logo (3) + tagline (1) + tips (1) + folders (1)
+  minimal: 2,   // Single line + margin
+} as const;
+
+/** Minimum content area height */
+const MIN_CONTENT_HEIGHT = 4;
+
+/** Height thresholds for responsive layout */
+const HEIGHT_THRESHOLDS = {
+  full: 30,     // Show full header if height >= 30
+  compact: 20,  // Show compact header if height >= 20
+} as const;
+
+/** Width thresholds for responsive layout */
+const WIDTH_THRESHOLDS = {
+  full: 60,     // Show full header if width >= 60
+  compact: 40,  // Show compact header if width >= 40
+} as const;
 
 /** Minimum characters required before searching */
 const MIN_SEARCH_LENGTH = 2;
@@ -50,17 +80,46 @@ const MIN_SEARCH_LENGTH = 2;
 /** Maximum results to fetch from database */
 const MAX_SEARCH_RESULTS = 50;
 
+/** Outer layout breathing room (padding around the whole app) */
+const LAYOUT_PADDING_X = 2;
+const LAYOUT_PADDING_Y = 1;
+
 /**
  * AppContent Component
  * 
  * Inner component that uses theme context.
  * Separated from App to allow ThemeProvider wrapping.
  */
-function AppContent() {
+function AppContent({ appConfig }: { appConfig: AppConfigState }) {
   const { colors, theme, setTheme } = useTheme();
   const { stdout } = useStdout();
-  const viewportWidth = stdout.columns ?? 120;
-  const contentWidth = viewportWidth > 64 ? viewportWidth - 4 : viewportWidth;
+  
+  // Viewport dimensions (100vw, 100vh equivalent)
+  const viewportWidth = stdout.columns ?? 80;
+  const viewportHeight = stdout.rows ?? 24;
+  const usableHeight = Math.max(viewportHeight - LAYOUT_PADDING_Y * 2, 10);
+  
+  // Content width uses inner viewport after app-level horizontal padding
+  const contentWidth = Math.max(viewportWidth - LAYOUT_PADDING_X * 2, 20);
+  
+  // Always use minimal header after splash screen showed full logo
+  // Only fall back to even smaller if viewport is very narrow
+  const headerMode: "full" | "compact" | "minimal" = useMemo(() => {
+    // After splash, always use minimal - user already saw full logo
+    return "minimal";
+  }, []);
+  
+  // Calculate content height to fill remaining viewport space (like flex-grow)
+  const contentHeight = useMemo(() => {
+    const headerHeight = HEADER_HEIGHTS[headerMode];
+    const footerHeight = 3;  // Separator + stats row + margin
+    const inputHeight = 4;   // Input margin + bordered input row
+    const statusHeight = 2;  // Reserved status row (margin + single line)
+    const margins = headerMode === "minimal" ? 2 : 4; // Reduced margins for compact
+    const availableHeight =
+      usableHeight - headerHeight - footerHeight - inputHeight - statusHeight - margins;
+    return Math.max(MIN_CONTENT_HEIGHT, availableHeight);
+  }, [usableHeight, headerMode]);
   
   /** Current search/command query string */
   const [query, setQuery] = useState("");
@@ -73,6 +132,17 @@ function AppContent() {
   
   /** Selected result in search results (for keyboard nav) */
   const [selectedResultIndex, setSelectedResultIndex] = useState(0);
+
+  /** Show onboarding keyboard hints until the user interacts */
+  const [showSearchHints, setShowSearchHints] = useState(true);
+
+  /** Modal-style preview for selected search result path */
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [previewActionIndex, setPreviewActionIndex] = useState(0); // 0=open, 1=back
+  const [scopeSelectedIndex, setScopeSelectedIndex] = useState(0);
+  const [pendingBroadRoots, setPendingBroadRoots] = useState<string[]>([]);
+  const [scopeSuggestedFolders, setScopeSuggestedFolders] = useState<string[]>([]);
+  const [scopeSelectedFolders, setScopeSelectedFolders] = useState<Set<string>>(new Set());
   
   /** Temporary status message (e.g., "File opened") */
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -82,23 +152,141 @@ function AppContent() {
   
   /** Real-time progress during indexing */
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null);
+  const indexingRunIdRef = useRef(0);
   
   /** Total indexed document count */
   const [documentCount, setDocumentCount] = useState(0);
   
+  /** List of indexed files for /files view */
+  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
+  
+  /** Selected file index in files view */
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0);
+
+  /** Selected theme index in theme picker view */
+  const [selectedThemeIndex, setSelectedThemeIndex] = useState(0);
+
+  /** Theme active before opening picker (for cancel/revert behavior) */
+  const [themePickerInitialThemeName, setThemePickerInitialThemeName] = useState<string | null>(null);
+  
   /** Ink's exit function for /quit command */
   const { exit } = useApp();
 
-  /** Folders to search (could be loaded from config file in future) */
-  const folders = ["~/Documents", "~/Projects"];
-  
-  /** File extensions to index */
-  const extensions = [".md", ".txt", ".json", ".yml"];
+  const folders = appConfig.config.folders;
+  const extensions = appConfig.config.extensions;
+  const ignorePatterns = appConfig.config.ignore;
+
+  const toDisplayPath = useCallback((p: string) => p.replace(os.homedir(), "~"), []);
+
+  const getRecommendedFolders = useCallback((): string[] => {
+    const candidates = ["~/Documents", "~/Projects", "~/Desktop", "~/Downloads"];
+    return candidates.filter((folder) => fs.existsSync(folder.replace("~", os.homedir())));
+  }, []);
+
+  const isBroadRoot = useCallback((rootPath: string): boolean => {
+    const resolved = path.resolve(rootPath);
+    if (resolved === path.parse(resolved).root) return true;
+    if (/^[a-zA-Z]:[\\\/]?$/.test(resolved)) return true;
+    return false;
+  }, []);
+
+  const startIndexing = useCallback((sourceFolders: string[]) => {
+    const runId = ++indexingRunIdRef.current;
+    setMode("indexing");
+    setStatusMessage(null);
+    setIndexResult(null);
+    setIndexProgress({
+      current: 0,
+      total: 1,
+      file: "Scanning folders...",
+    });
+
+    (async () => {
+      try {
+        const roots = sourceFolders.map(f => f.replace("~", os.homedir()));
+        const gen = indexWithProgress({ roots, exts: extensions, ignore: ignorePatterns });
+        let lastProgressUpdateAt = 0;
+        let latestProgress: IndexProgress | null = null;
+
+        while (true) {
+          if (runId !== indexingRunIdRef.current) {
+            if (typeof gen.return === "function") {
+              await gen.return({ indexed: 0, skipped: 0, indexedFiles: [] });
+            }
+            return;
+          }
+
+          const { value, done } = await gen.next();
+          if (done) {
+            if (runId !== indexingRunIdRef.current) {
+              return;
+            }
+            if (latestProgress) {
+              setIndexProgress(latestProgress);
+            }
+            const result = value as IndexResult;
+            setIndexResult(result);
+            setMode("indexed");
+            setDocumentCount(getDocumentCount());
+            break;
+          }
+          const progress = value as IndexProgress;
+          latestProgress = progress;
+          const now = Date.now();
+          const shouldRender =
+            progress.current === 1 ||
+            progress.current === progress.total ||
+            now - lastProgressUpdateAt >= 50 ||
+            progress.current % 25 === 0;
+
+          if (shouldRender) {
+            setIndexProgress(progress);
+            lastProgressUpdateAt = now;
+          }
+        }
+      } catch (err) {
+        if (runId !== indexingRunIdRef.current) {
+          return;
+        }
+        setStatusMessage(`Index error: ${err}`);
+        setMode("search");
+      }
+      if (runId !== indexingRunIdRef.current) {
+        return;
+      }
+      setQuery("");
+      setIndexProgress(null);
+    })();
+  }, [extensions, ignorePatterns]);
+
+  const cancelIndexing = useCallback(() => {
+    if (mode !== "indexing") return;
+    indexingRunIdRef.current += 1;
+    setIndexProgress(null);
+    setMode("search");
+    setQuery("");
+    setStatusMessage("Indexing cancelled");
+  }, [mode]);
 
   /** Load document count on mount and after indexing */
   useEffect(() => {
     setDocumentCount(getDocumentCount());
   }, [indexResult]);
+
+  useEffect(() => {
+    if (appConfig.warnings.length > 0) {
+      setStatusMessage(appConfig.warnings[0]);
+      return;
+    }
+
+    const configuredThemeName = appConfig.config.theme;
+    const resolvedTheme = getThemeByName(configuredThemeName);
+    if (resolvedTheme.name !== configuredThemeName) {
+      setStatusMessage(
+        `Config theme "${configuredThemeName}" not found. Using ${resolvedTheme.displayName}.`
+      );
+    }
+  }, [appConfig]);
 
   /** Whether query is a slash command (starts with /) */
   const isCommandMode = query.startsWith("/");
@@ -114,13 +302,30 @@ function AppContent() {
     setSelectedCommandIndex(0);
   }, [filteredCommands.length]);
 
-  /** Cycles to the next theme in the list */
-  const cycleTheme = useCallback(() => {
-    const currentIndex = themes.findIndex((t) => t.name === theme.name);
-    const nextIndex = (currentIndex + 1) % themes.length;
-    const nextTheme = themes[nextIndex];
-    setTheme(nextTheme);
-  }, [theme, setTheme]);
+  /** Apply/cancel theme picker selection */
+  const closeThemePicker = useCallback((confirm: boolean) => {
+    if (confirm) {
+      const selectedTheme = themes[selectedThemeIndex];
+      if (selectedTheme) {
+        setTheme(selectedTheme);
+        setStatusMessage(`Theme changed to ${selectedTheme.displayName}`);
+      }
+    } else if (themePickerInitialThemeName) {
+      setTheme(getThemeByName(themePickerInitialThemeName));
+    }
+
+    setThemePickerInitialThemeName(null);
+    setMode("search");
+  }, [selectedThemeIndex, themePickerInitialThemeName, setTheme]);
+
+  /** Live theme preview while moving through theme picker options */
+  useEffect(() => {
+    if (mode !== "themes") return;
+    const previewTheme = themes[selectedThemeIndex];
+    if (previewTheme && previewTheme.name !== theme.name) {
+      setTheme(previewTheme);
+    }
+  }, [mode, selectedThemeIndex, theme.name, setTheme]);
 
   /**
    * Executes a slash command based on its action type.
@@ -132,78 +337,51 @@ function AppContent() {
         exit();
         break;
       
-      case "theme":
-        cycleTheme();
+      case "files":
+        // Show indexed files list
+        setIndexedFiles(getIndexedFiles());
+        setSelectedFileIndex(0);
+        setMode("files");
         setQuery("");
+        break;
+      
+      case "theme":
+        setThemePickerInitialThemeName(theme.name);
+        setSelectedThemeIndex(Math.max(0, themes.findIndex((t) => t.name === theme.name)));
+        setMode("themes");
+        setQuery("");
+        break;
+
+      case "config":
+        setStatusMessage(
+          `Config: ${appConfig.configPath} · folders ${folders.length} · exts ${extensions.length}`
+        );
+        setQuery("");
+        setMode("search");
         break;
         
       case "index":
-        // Start indexing with progress tracking
-        setMode("indexing");
-        setStatusMessage(null);
-        setIndexResult(null);
-        setIndexProgress(null);
-        
-        (async () => {
-          const MIN_DURATION_MS = 3000; // Minimum 3 seconds for smooth UX
-          const startTime = Date.now();
-          
-          try {
-            // Expand ~ to actual home directory
-            const roots = folders.map(f => f.replace("~", os.homedir()));
-            const gen = indexWithProgress({ roots, exts: extensions });
-            
-            // Collect all progress updates first
-            const progressUpdates: IndexProgress[] = [];
-            let result: IndexResult | undefined;
-            
-            while (true) {
-              const { value, done } = await gen.next();
-              if (done) {
-                result = value as IndexResult;
-                break;
-              }
-              progressUpdates.push(value as IndexProgress);
-            }
-            
-            // Calculate delay between each progress update
-            // to spread them over at least MIN_DURATION_MS
-            const totalUpdates = progressUpdates.length;
-            const delayPerUpdate = totalUpdates > 0 
-              ? Math.max(MIN_DURATION_MS / totalUpdates, 30) // At least 30ms per update
-              : 100;
-            
-            // Replay progress updates with delay for smooth animation
-            for (let i = 0; i < progressUpdates.length; i++) {
-              setIndexProgress(progressUpdates[i]);
-              await new Promise(resolve => setTimeout(resolve, delayPerUpdate));
-            }
-            
-            // Ensure we've waited at least MIN_DURATION_MS total
-            const elapsed = Date.now() - startTime;
-            if (elapsed < MIN_DURATION_MS) {
-              await new Promise(resolve => setTimeout(resolve, MIN_DURATION_MS - elapsed));
-            }
-            
-            if (result) {
-              setIndexResult(result);
-              setMode("indexed");
-              // Refresh document count after indexing
-              setDocumentCount(getDocumentCount());
-            }
-          } catch (err) {
-            setStatusMessage(`Index error: ${err}`);
-            setMode("search");
-          }
+        const expanded = folders.map((f) => f.replace("~", os.homedir()));
+        const broad = expanded.filter(isBroadRoot);
+        if (broad.length > 0) {
+          const suggested = getRecommendedFolders();
+          setPendingBroadRoots(broad.map(toDisplayPath));
+          setScopeSuggestedFolders(suggested);
+          setScopeSelectedFolders(new Set(suggested));
+          setScopeSelectedIndex(0);
+          setMode("scope");
           setQuery("");
-          setIndexProgress(null);
-        })();
+          break;
+        }
+        startIndexing(folders);
         break;
         
       case "reset":
-        // Clear the search index
+        // Clear the search index and screen
         try {
           resetDb();
+          // Clear terminal screen
+          process.stdout.write("\x1b[2J\x1b[H");
           setStatusMessage("Index cleared successfully");
           setIndexResult(null);
           setDocumentCount(0);
@@ -217,7 +395,7 @@ function AppContent() {
       default:
         setQuery("");
     }
-  }, [exit, folders, extensions, cycleTheme]);
+  }, [appConfig.configPath, exit, folders, getRecommendedFolders, isBroadRoot, startIndexing, theme.name, toDisplayPath]);
 
   /**
    * Opens a file in the system's default application.
@@ -254,18 +432,140 @@ function AppContent() {
     }
   }, [query, isCommandMode]);
 
+  const selectedResult = results[selectedResultIndex] ?? null;
+  const previewModalHeight = Math.max(8, contentHeight);
+  const previewModalWidth = Math.max(48, Math.min(120, contentWidth - 10));
+
   /** Reset selection when results change */
   useEffect(() => {
     setSelectedResultIndex(0);
   }, [results.length, query]);
 
   useInput((input, key) => {
+    const hasUserInteracted =
+      input.length > 0 || key.backspace || key.delete || key.upArrow || key.downArrow || key.return;
+    if (showSearchHints && hasUserInteracted) {
+      setShowSearchHints(false);
+    }
+
+    // Search preview modal controls
+    if (previewPath) {
+      if (key.leftArrow) {
+        setPreviewActionIndex((i) => Math.max(0, i - 1));
+      } else if (key.rightArrow || key.tab) {
+        setPreviewActionIndex((i) => Math.min(1, i + 1));
+      } else if (key.return) {
+        if (previewActionIndex === 0) {
+          openFile(previewPath);
+        } else {
+          setPreviewPath(null);
+        }
+      } else if (input.toLowerCase() === "o") {
+        openFile(previewPath);
+      } else if (key.escape || input === "q") {
+        setPreviewPath(null);
+      }
+      return;
+    }
+
+    if (mode === "indexing") {
+      if (key.escape || input === "q") {
+        cancelIndexing();
+      }
+      return;
+    }
+
+    // Theme picker navigation
+    if (mode === "themes") {
+      if (key.upArrow) {
+        setSelectedThemeIndex((i) => Math.max(0, i - 1));
+      } else if (key.downArrow) {
+        setSelectedThemeIndex((i) => Math.min(themes.length - 1, i + 1));
+      } else if (key.return) {
+        closeThemePicker(true);
+      } else if (key.escape || input === "q") {
+        closeThemePicker(false);
+      }
+      return;
+    }
+
+    // Broad scope warning/select view
+    if (mode === "scope") {
+      const firstFolderIndex = 1;
+      const startSelectedIndex = firstFolderIndex + scopeSuggestedFolders.length;
+      const cancelIndex = startSelectedIndex + 1;
+      const maxIndex = cancelIndex;
+
+      if (key.upArrow) {
+        setScopeSelectedIndex((i) => Math.max(0, i - 1));
+      } else if (key.downArrow) {
+        setScopeSelectedIndex((i) => Math.min(maxIndex, i + 1));
+      } else if (input === " ") {
+        if (scopeSelectedIndex >= firstFolderIndex && scopeSelectedIndex < startSelectedIndex) {
+          const folder = scopeSuggestedFolders[scopeSelectedIndex - firstFolderIndex];
+          if (folder) {
+            setScopeSelectedFolders((prev) => {
+              const next = new Set(prev);
+              if (next.has(folder)) next.delete(folder);
+              else next.add(folder);
+              return next;
+            });
+          }
+        }
+      } else if (key.return) {
+        if (scopeSelectedIndex === 0) {
+          startIndexing(pendingBroadRoots.length > 0 ? pendingBroadRoots : folders);
+        } else if (scopeSelectedIndex >= firstFolderIndex && scopeSelectedIndex < startSelectedIndex) {
+          const folder = scopeSuggestedFolders[scopeSelectedIndex - firstFolderIndex];
+          if (folder) {
+            setScopeSelectedFolders((prev) => {
+              const next = new Set(prev);
+              if (next.has(folder)) next.delete(folder);
+              else next.add(folder);
+              return next;
+            });
+          }
+        } else if (scopeSelectedIndex === startSelectedIndex) {
+          const selected = scopeSuggestedFolders.filter((folder) => scopeSelectedFolders.has(folder));
+          if (selected.length === 0) {
+            setStatusMessage("Select at least one folder before starting.");
+          } else {
+            setStatusMessage(`Using selected folders (${selected.length}) instead of whole-disk root.`);
+            startIndexing(selected);
+          }
+        } else if (scopeSelectedIndex === cancelIndex) {
+          setMode("search");
+        }
+      } else if (key.escape || input === "q") {
+        setMode("search");
+      }
+      return;
+    }
+
+    // Files view navigation
+    if (mode === "files") {
+      if (key.upArrow) {
+        setSelectedFileIndex((i) => Math.max(0, i - 1));
+      } else if (key.downArrow) {
+        setSelectedFileIndex((i) => Math.min(indexedFiles.length - 1, i + 1));
+      } else if (key.return) {
+        const selected = indexedFiles[selectedFileIndex];
+        if (selected) {
+          openFile(selected.path);
+        }
+      } else if (key.escape || input === "q") {
+        setMode("search");
+      }
+      return;
+    }
+    
     // Command palette navigation
     if (isCommandMode && filteredCommands.length > 0) {
+      const commandCount = filteredCommands.length;
       if (key.upArrow) {
-        setSelectedCommandIndex((i) => Math.max(0, i - 1));
+        setSelectedCommandIndex((i) => (i - 1 + commandCount) % commandCount);
       } else if (key.downArrow) {
-        setSelectedCommandIndex((i) => Math.min(filteredCommands.length - 1, i + 1));
+        setSelectedCommandIndex((i) => (i + 1) % commandCount);
       } else if (key.return) {
         const cmd = filteredCommands[selectedCommandIndex];
         if (cmd) {
@@ -282,7 +582,8 @@ function AppContent() {
       } else if (key.return) {
         const selected = results[selectedResultIndex];
         if (selected) {
-          openFile(selected.path);
+          setPreviewPath(selected.path);
+          setPreviewActionIndex(0);
         }
       }
     }
@@ -295,12 +596,20 @@ function AppContent() {
   });
 
   return (
-    <Box flexDirection="column" padding={1} width="100%">
-      <Box flexDirection="column" width={contentWidth} alignSelf="center">
+    <Box
+      flexDirection="column"
+      width={viewportWidth}
+      height={viewportHeight}
+      paddingX={LAYOUT_PADDING_X}
+      paddingY={LAYOUT_PADDING_Y}
+    >
+      <Box flexDirection="column" width={contentWidth} alignSelf="center" height="100%">
         {/* Application Header */}
         <Header
           folders={folders}
           extensions={extensions}
+          mode={headerMode}
+          maxWidth={contentWidth}
         />
 
         {/* Search/Command Input */}
@@ -308,64 +617,125 @@ function AppContent() {
           query={query}
           onChange={(val) => {
             setQuery(val);
-            if (mode === "indexed") setMode("search");
+            if (previewPath) {
+              setPreviewPath(null);
+            }
+            // Leave transient views when user starts typing a new query/command.
+            if (mode === "themes") {
+              closeThemePicker(false);
+            } else if (mode === "indexed" || mode === "files") {
+              setMode("search");
+            }
           }}
+          onSubmit={() => {
+            if (mode === "scope") {
+              return;
+            }
+            if (isCommandMode && filteredCommands.length > 0) {
+              const cmd = filteredCommands[selectedCommandIndex];
+              if (cmd) {
+                executeCommand(cmd, getCommandArgs(query));
+              }
+              return;
+            }
+            if (!isCommandMode && results.length > 0) {
+              const selected = results[selectedResultIndex];
+              if (selected) {
+                setPreviewPath(selected.path);
+                setPreviewActionIndex(0);
+              }
+            }
+          }}
+          width={contentWidth}
         />
 
-        {/* Status Message (temporary feedback) */}
-        {statusMessage && (
-          <Box marginTop={1}>
-            <Text color={colors.warning}>{statusMessage}</Text>
-          </Box>
-        )}
+        {/* Status row (always reserved to avoid layout shift) */}
+        <Box height={1}>
+          {statusMessage ? (
+            <Text color={colors.warning} wrap="truncate">
+              {statusMessage}
+            </Text>
+          ) : (
+            <Text dimColor> </Text>
+          )}
+        </Box>
 
-        {/* Dynamic Content Area */}
+        {/* Dynamic Content Area - fills remaining space */}
         {mode === "indexing" ? (
           // Indexing Progress View - prominent with border
           <Box
-            height={CONTENT_HEIGHT}
+            height={contentHeight}
             flexDirection="column"
-            marginTop={2}
+            marginTop={1}
             borderStyle="round"
-            borderColor="cyan"
-            paddingX={2}
-            paddingY={1}
+            borderColor={colors.border}
+            paddingX={1}
           >
-            <Text bold color="cyan">Indexing documents...</Text>
+            <Text bold color={colors.primary}>Indexing documents...</Text>
+            <Text dimColor>Press Esc or q to cancel</Text>
             {indexProgress && (
               <>
                 <Box marginTop={1}>
                   <ProgressBar
                     progress={indexProgress.current / indexProgress.total}
-                    width={50}
+                    width={Math.min(50, contentWidth - 6)}
                   />
                 </Box>
                 <Box marginTop={1}>
-                  <Text color="yellow">{indexProgress.current}</Text>
+                  <Text color={colors.highlight}>{indexProgress.current}</Text>
                   <Text dimColor> of </Text>
-                  <Text color="yellow">{indexProgress.total}</Text>
-                  <Text dimColor> files processed</Text>
+                  <Text color={colors.highlight}>{indexProgress.total}</Text>
+                  <Text dimColor> files</Text>
                 </Box>
-                <Box>
-                  <Text dimColor>Current: </Text>
-                  <Text color="cyan" wrap="truncate">
-                    {indexProgress.file.replace(os.homedir(), "~").slice(-45)}
-                  </Text>
-                </Box>
+                {contentHeight > 6 && (
+                  <Box>
+                    <Text dimColor>Current: </Text>
+                    <Text color={colors.primary} wrap="truncate">
+                      {indexProgress.file.replace(os.homedir(), "~").slice(-(contentWidth - 12))}
+                    </Text>
+                  </Box>
+                )}
               </>
             )}
           </Box>
         ) : mode === "indexed" && indexResult ? (
           // Indexing Complete View
-          <Box height={CONTENT_HEIGHT} flexDirection="column" marginTop={2}>
+          <Box height={contentHeight} flexDirection="column" marginTop={1}>
             <IndexResults
               indexedFiles={indexResult.indexedFiles}
               skipped={indexResult.skipped}
             />
           </Box>
+        ) : mode === "files" ? (
+          // Files List View
+          <Box height={contentHeight} flexDirection="column" marginTop={1}>
+            <FilesView
+              files={indexedFiles}
+              selectedIndex={selectedFileIndex}
+              maxHeight={contentHeight - 2}
+            />
+          </Box>
+        ) : mode === "themes" ? (
+          // Theme Picker View
+          <Box height={contentHeight} flexDirection="column" marginTop={1}>
+            <ThemeSelector
+              themes={themes}
+              selectedIndex={selectedThemeIndex}
+            />
+          </Box>
+        ) : mode === "scope" ? (
+          // Index Scope Warning / Selection
+          <Box height={contentHeight} flexDirection="column" marginTop={1}>
+            <IndexScopeSelector
+              broadRoots={pendingBroadRoots}
+              suggestedFolders={scopeSuggestedFolders}
+              selectedFolders={scopeSelectedFolders}
+              selectedIndex={scopeSelectedIndex}
+            />
+          </Box>
         ) : isCommandMode ? (
           // Command Palette View
-          <Box height={CONTENT_HEIGHT} flexDirection="column" marginTop={2}>
+          <Box height={contentHeight} flexDirection="column" marginTop={1}>
             <CommandPalette
               commands={filteredCommands}
               selectedIndex={selectedCommandIndex}
@@ -373,12 +743,29 @@ function AppContent() {
           </Box>
         ) : (
           // Search Results View (default)
-          <Box height={CONTENT_HEIGHT} flexDirection="column" marginTop={2}>
-            <SearchResults
-              results={results}
-              query={query}
-              selectedIndex={selectedResultIndex}
-            />
+          <Box height={contentHeight} flexDirection="column" marginTop={1}>
+            {previewPath && (
+              <Box height={contentHeight} justifyContent="center" alignItems="center">
+                <Box width={previewModalWidth} height={previewModalHeight}>
+                  <FilePreview
+                    path={previewPath}
+                    query={query}
+                    height={previewModalHeight}
+                    maxMatches={Math.max(3, previewModalHeight - 5)}
+                    selectedActionIndex={previewActionIndex}
+                  />
+                </Box>
+              </Box>
+            )}
+            {!previewPath && (
+              <SearchResults
+                results={results}
+                query={query}
+                selectedIndex={selectedResultIndex}
+                showHints={showSearchHints}
+                maxHeight={contentHeight}
+              />
+            )}
           </Box>
         )}
 
@@ -396,11 +783,33 @@ function AppContent() {
  * Main Application Component
  * 
  * Wraps AppContent with ThemeProvider for theme context.
+ * Shows splash screen on startup before main app.
  */
 export function App() {
+  const { stdout } = useStdout();
+  const [showSplash, setShowSplash] = useState(true);
+  const appConfig = useMemo(() => loadAppConfig(), []);
+  
+  const viewportWidth = stdout.columns ?? 80;
+  const viewportHeight = stdout.rows ?? 24;
+  
+  // Auto-dismiss splash screen after delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, SPLASH_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  
+  if (showSplash) {
+    return (
+      <SplashScreen width={viewportWidth} height={viewportHeight} />
+    );
+  }
+  
   return (
-    <ThemeProvider>
-      <AppContent />
+    <ThemeProvider initialTheme={getThemeByName(appConfig.config.theme)}>
+      <AppContent appConfig={appConfig} />
     </ThemeProvider>
   );
 }

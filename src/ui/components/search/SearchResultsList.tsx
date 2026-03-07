@@ -10,11 +10,12 @@
  * This is the primary search results component used in the App.
  */
 
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Box, Text } from "ink";
 import { SearchResultItem } from "./SearchResultItem.js";
 import { SearchResultsHeader } from "./SearchResultsHeader.js";
 import { SearchHint, NoResults } from "./SearchEmptyStates.js";
+import { useTheme } from "../../theme/index.js";
 
 /** Search result data structure from the search query module */
 interface SearchResult {
@@ -33,14 +34,18 @@ interface SearchResultsListProps {
   query: string;
   /** Index of the currently selected result (for keyboard navigation) */
   selectedIndex: number;
+  /** Whether onboarding-style keyboard hints should be visible */
+  showHints?: boolean;
+  /** Optional container height from parent layout */
+  maxHeight?: number;
+  /** Render as de-emphasized background (for modal preview state) */
+  dimmed?: boolean;
 }
 
 /** 
  * Maximum number of results to display at once.
  * Each result takes approximately 2 lines (path + snippet).
  */
-const MAX_VISIBLE_RESULTS = 5;
-
 /** Minimum query length required to perform a search */
 const MIN_QUERY_LENGTH = 2;
 
@@ -50,12 +55,17 @@ const RESULTS_CONTAINER_HEIGHT = 12;
 export const SearchResultsList: React.FC<SearchResultsListProps> = ({ 
   results, 
   query, 
-  selectedIndex 
+  selectedIndex,
+  showHints = true,
+  maxHeight = RESULTS_CONTAINER_HEIGHT,
+  dimmed = false,
 }) => {
+  const { colors } = useTheme();
+
   // Show hint if query is too short
   const queryTooShort = query.trim().length < MIN_QUERY_LENGTH;
   if (queryTooShort) {
-    return <SearchHint />;
+    return showHints ? <SearchHint /> : <Box marginTop={1} height={maxHeight} />;
   }
 
   // Show no results message if search returned empty
@@ -64,13 +74,31 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
     return <NoResults query={query} />;
   }
 
-  // Calculate scroll window - keeps selected item visible
-  const scrollOffset = Math.max(0, Math.min(
-    selectedIndex - Math.floor(MAX_VISIBLE_RESULTS / 2),
-    results.length - MAX_VISIBLE_RESULTS
-  ));
-  const startIndex = Math.max(0, scrollOffset);
-  const endIndex = Math.min(results.length, startIndex + MAX_VISIBLE_RESULTS);
+  // Calculate how many rows can fit in current height.
+  const maxVisibleResults = useMemo(() => Math.max(
+    1,
+    Math.floor((maxHeight - 4) / 2)
+  ), [maxHeight]);
+
+  // Edge-triggered scrolling: only shift window when selection
+  // reaches the top/bottom edge, not while moving in the middle.
+  const [startIndex, setStartIndex] = useState(0);
+
+  useEffect(() => {
+    const maxStart = Math.max(0, results.length - maxVisibleResults);
+
+    setStartIndex((prev) => {
+      let next = prev;
+      if (selectedIndex < prev) {
+        next = selectedIndex;
+      } else if (selectedIndex >= prev + maxVisibleResults) {
+        next = selectedIndex - maxVisibleResults + 1;
+      }
+      return Math.max(0, Math.min(next, maxStart));
+    });
+  }, [selectedIndex, maxVisibleResults, results.length]);
+
+  const endIndex = Math.min(results.length, startIndex + maxVisibleResults);
   const visibleResults = results.slice(startIndex, endIndex);
   
   // Scroll indicators
@@ -78,12 +106,13 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
   const canScrollDown = endIndex < results.length;
 
   return (
-    <Box flexDirection="column" marginTop={1} height={RESULTS_CONTAINER_HEIGHT} width="100%">
+    <Box flexDirection="column" marginTop={1} height={maxHeight} width="100%">
       {/* Results count header */}
       <SearchResultsHeader
         totalResults={results.length}
         displayedResults={visibleResults.length}
         query={query}
+        dimmed={dimmed}
       />
 
       {/* Scroll up indicator */}
@@ -99,6 +128,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
           snippet={result.snippet}
           occurrences={result.occurrences}
           isSelected={startIndex + index === selectedIndex}
+          dimmed={dimmed}
         />
       ))}
 
@@ -110,7 +140,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
       {/* Navigation hints */}
       <Box marginTop={1}>
         <Text dimColor>
-          <Text color="yellow">↑↓</Text> navigate  <Text color="yellow">Enter</Text> open  <Text color="yellow">/</Text> commands
+          <Text color={colors.highlight}>↑↓</Text> navigate  <Text color={colors.highlight}>Enter</Text> preview  <Text color={colors.highlight}>/</Text> commands
         </Text>
       </Box>
     </Box>

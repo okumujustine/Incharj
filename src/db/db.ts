@@ -49,3 +49,39 @@ export function getDocumentCount(): number {
         return 0;
     }
 }
+
+/** Indexed file info */
+export interface IndexedFile {
+    path: string;
+    ext: string;
+    sizeBytes: number;
+    indexedAt: Date;
+}
+
+/**
+ * Gets all indexed files with their metadata.
+ * Returns empty array if database doesn't exist.
+ */
+export function getIndexedFiles(): IndexedFile[] {
+    const dbPath = getDbPath();
+    if (!fs.existsSync(dbPath)) return [];
+    
+    try {
+        const db = openDb();
+        const rows = db.prepare(`
+            SELECT path, ext, size_bytes, indexed_at 
+            FROM files 
+            ORDER BY indexed_at DESC
+        `).all() as Array<{ path: string; ext: string; size_bytes: number; indexed_at: number }>;
+        db.close();
+        
+        return rows.map(row => ({
+            path: row.path,
+            ext: row.ext,
+            sizeBytes: row.size_bytes,
+            indexedAt: new Date(row.indexed_at)
+        }));
+    } catch {
+        return [];
+    }
+}

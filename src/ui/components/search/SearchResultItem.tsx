@@ -21,6 +21,7 @@ import React from "react";
 import { Box, Text, useStdout } from "ink";
 import os from "node:os";
 import { TextHighlighter } from "../common/TextHighlighter.js";
+import { useTheme } from "../../theme/index.js";
 
 interface SearchResultItemProps {
   /** Full path to the file */
@@ -31,6 +32,8 @@ interface SearchResultItemProps {
   occurrences?: number;
   /** Whether this item is currently selected (keyboard navigation) */
   isSelected: boolean;
+  /** Whether item should be de-emphasized as background content */
+  dimmed?: boolean;
 }
 
 /**
@@ -81,7 +84,9 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
   snippet,
   occurrences = 1,
   isSelected,
+  dimmed = false,
 }) => {
+  const { colors } = useTheme();
   const { stdout } = useStdout();
   const terminalWidth = stdout.columns ?? 120;
   const maxSnippetLength = Math.max(80, terminalWidth - 24);
@@ -93,22 +98,24 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
       {/* File path row with selection indicator */}
       <Box width="100%" justifyContent="space-between">
         <Box flexGrow={1}>
-          <Text
-            backgroundColor={isSelected ? "cyan" : undefined}
-            color={isSelected ? "black" : "white"}
-            wrap="truncate"
-          >
+          <Text color={dimmed ? colors.textDim : (isSelected ? colors.primary : colors.textDim)} dimColor={dimmed}>
             {isSelected ? "› " : "  "}
+          </Text>
+          <Text
+            color={dimmed ? colors.textDim : (isSelected ? colors.text : colors.textDim)}
+            wrap="truncate"
+            dimColor={dimmed}
+          >
             {displayPath}
           </Text>
         </Box>
-        <Text color="yellow"> ({occurrences})</Text>
+        <Text color={dimmed ? colors.textDim : (isSelected ? colors.accent : colors.textDim)} dimColor={dimmed}> ({occurrences})</Text>
       </Box>
 
-      {/* Snippet row with tree-style connector */}
+      {/* Snippet row with subtle connector */}
       {formattedSnippet && (
         <Box paddingLeft={4} width="100%">
-          <Text dimColor>└─ </Text>
+          <Text color={colors.textDim}>│ </Text>
           <TextHighlighter text={formattedSnippet} />
         </Box>
       )}
