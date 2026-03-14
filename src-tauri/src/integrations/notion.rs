@@ -278,9 +278,10 @@ pub fn connect(_app: &tauri::AppHandle) -> Result<ConnectResult, String> {
         return Err("State mismatch in OAuth callback".into());
     }
 
-    let _ = request.respond(tiny_http::Response::from_string(
-        "<html><body style='font-family:sans-serif;text-align:center;padding:60px;background:#18160f;color:#f2ede3'><h2>Connected to Notion!</h2><p style='opacity:0.5'>You can close this tab and return to Incharj.</p></body></html>",
-    ));
+    let html = "<html><body style='font-family:sans-serif;text-align:center;padding:60px;background:#18160f;color:#f2ede3'><h2>Connected to Notion!</h2><p style='opacity:0.5'>You can close this tab and return to Incharj.</p></body></html>";
+    let response = tiny_http::Response::from_string(html)
+        .with_header("Content-Type: text/html; charset=utf-8".parse::<tiny_http::Header>().unwrap());
+    let _ = request.respond(response);
     drop(server);
 
     // Exchange code for token — Notion uses HTTP Basic auth with client credentials
