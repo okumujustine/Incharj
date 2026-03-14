@@ -760,9 +760,9 @@ pub async fn sync_google_drive(app: AppHandle) -> Result<serde_json::Value, Stri
 }
 
 #[tauri::command]
-pub async fn connect_notion() -> Result<String, String> {
+pub async fn connect_notion(app: AppHandle) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
-        notion::connect().map(|r| r.workspace_name)
+        notion::connect(&app).map(|r| r.workspace_name)
     })
     .await
     .map_err(|e| e.to_string())?

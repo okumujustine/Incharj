@@ -7,7 +7,7 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const API_BASE: &str = "https://api.notion.com/v1";
 const NOTION_VERSION: &str = "2022-06-28";
@@ -234,15 +234,14 @@ fn fetch_page_content(token: &str, page_id: &str) -> Option<String> {
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
-pub fn connect() -> Result<ConnectResult, String> {
+pub fn connect(app: &tauri::AppHandle) -> Result<ConnectResult, String> {
     let cid = client_id();
     if cid.is_empty() {
         return Err("Notion OAuth credentials not configured. Set NOTION_CLIENT_ID and NOTION_CLIENT_SECRET at build time.".into());
     }
 
-    // Fixed port so the redirect URI is predictable and can be registered in Notion
-    let port: u16 = 12346;
-    let redirect_uri = format!("http://127.0.0.1:{}/callback", port);
+    // GitHub Pages bounce page — Notion requires HTTPS; the page JS-redirects to incharj://oauth/callback
+    let redirect_uri = "https://okumujustine.github.io/Incharj/callback";
 
     // Random state for CSRF protection
     let mut state_bytes = [0u8; 16];
@@ -253,39 +252,26 @@ pub fn connect() -> Result<ConnectResult, String> {
         "{}?client_id={}&redirect_uri={}&response_type=code&owner=user&state={}",
         AUTH_URL,
         urlencoding(cid),
-        urlencoding(&redirect_uri),
+        urlencoding(redirect_uri),
         state,
     );
 
+    // Register a one-shot channel to receive the deep link callback URL
+    let (tx, rx) = std::sync::mpsc::sync_channel::<String>(1);
+    let _ = app.state::<crate::OAuthCallbackState>().0.lock().map(|mut g| *g = Some(tx));
+
     open::that(&auth_url).map_err(|e| format!("Failed to open browser: {e}"))?;
 
-    // Wait for OAuth callback
-    let server = tiny_http::Server::http(format!("127.0.0.1:{port}"))
-        .map_err(|_| format!("Port {port} is already in use. Close any app using that port and try again."))?;
+    // Wait up to 120s for the deep link to arrive
+    let callback_url = rx
+        .recv_timeout(std::time::Duration::from_secs(120))
+        .map_err(|_| "Authorization timed out. Please try again.".to_string())?;
 
-    let code = {
-        let request = server
-            .recv_timeout(std::time::Duration::from_secs(120))
-            .map_err(|e| format!("Callback server error: {e}"))?
-            .ok_or("Authorization timed out. Please try again.")?;
-
-        let url = request.url().to_string();
-        let code = parse_query_param(&url, "code").ok_or("No code in callback URL")?;
-        let returned_state = parse_query_param(&url, "state").unwrap_or_default();
-
-        if returned_state != state {
-            let _ = request.respond(tiny_http::Response::from_string(
-                "<html><body>Authorization failed: state mismatch.</body></html>",
-            ));
-            return Err("State mismatch in OAuth callback".into());
-        }
-
-        let _ = request.respond(tiny_http::Response::from_string(
-            "<html><body style='font-family:sans-serif;text-align:center;padding:60px'><h2>Connected to Notion!</h2><p>You can close this tab and return to Incharj.</p></body></html>",
-        ));
-        code
-    };
-    drop(server);
+    let code = parse_query_param(&callback_url, "code").ok_or("No code in callback URL")?;
+    let returned_state = parse_query_param(&callback_url, "state").unwrap_or_default();
+    if returned_state != state {
+        return Err("State mismatch in OAuth callback".into());
+    }
 
     // Exchange code for token — Notion uses HTTP Basic auth with client credentials
     let client = Client::new();
