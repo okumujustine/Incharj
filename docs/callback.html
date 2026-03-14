@@ -1,25 +1,196 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Connecting to Incharj…</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incharj — Connecting</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
   <style>
-    body { font-family: system-ui, sans-serif; background: #1a1917; color: #f5f0e8;
-           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    .box { text-align: center; }
-    h2 { font-size: 1.2rem; font-weight: 500; margin: 0 0 8px; }
-    p  { font-size: 0.85rem; opacity: 0.5; margin: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #18160f;
+      --bg-2:     #1f1c14;
+      --cream:    #f2ede3;
+      --cream-dim: rgba(242,237,227,0.45);
+      --gold:     #c9a84c;
+      --gold-dim: rgba(201,168,76,0.2);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--cream);
+      font-family: 'DM Mono', monospace;
+      overflow: hidden;
+    }
+
+    /* ── Grain overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      opacity: 0.028;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* ── Radial warmth ── */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 42%, rgba(201,168,76,0.07) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── Layout ── */
+    .stage {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+
+    /* ── Logo mark ── */
+    .mark {
+      width: 72px;
+      height: 72px;
+      opacity: 0;
+      transform: translateY(10px);
+      animation: rise 0.7s cubic-bezier(0.22,1,0.36,1) 0.1s forwards;
+    }
+
+    /* ── Brand name ── */
+    .brand {
+      margin-top: 20px;
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 2rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      color: var(--cream);
+      opacity: 0;
+      transform: translateY(8px);
+      animation: rise 0.7s cubic-bezier(0.22,1,0.36,1) 0.25s forwards;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      margin-top: 28px;
+      width: 1px;
+      height: 32px;
+      background: linear-gradient(to bottom, transparent, var(--cream-dim), transparent);
+      opacity: 0;
+      animation: rise 0.5s ease 0.45s forwards;
+    }
+
+    /* ── Status text ── */
+    .status {
+      margin-top: 28px;
+      font-size: 0.7rem;
+      font-weight: 300;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--cream-dim);
+      opacity: 0;
+      animation: rise 0.5s ease 0.55s forwards;
+    }
+
+    /* ── Pulse dots ── */
+    .dots {
+      margin-top: 28px;
+      display: flex;
+      gap: 6px;
+      opacity: 0;
+      animation: rise 0.5s ease 0.7s forwards;
+    }
+
+    .dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--gold);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    /* ── Corner marks ── */
+    .corner {
+      position: fixed;
+      width: 18px;
+      height: 18px;
+      opacity: 0.15;
+    }
+    .corner--tl { top: 28px; left: 28px; border-top: 1px solid var(--cream); border-left: 1px solid var(--cream); }
+    .corner--tr { top: 28px; right: 28px; border-top: 1px solid var(--cream); border-right: 1px solid var(--cream); }
+    .corner--bl { bottom: 28px; left: 28px; border-bottom: 1px solid var(--cream); border-left: 1px solid var(--cream); }
+    .corner--br { bottom: 28px; right: 28px; border-bottom: 1px solid var(--cream); border-right: 1px solid var(--cream); }
+
+    /* ── Animations ── */
+    @keyframes rise {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.25; transform: scale(0.8); }
+      50%       { opacity: 1;    transform: scale(1.2); background: var(--gold); }
+    }
   </style>
 </head>
 <body>
-  <div class="box">
-    <h2>Connecting to Incharj…</h2>
-    <p>You can close this tab.</p>
+
+  <div class="corner corner--tl"></div>
+  <div class="corner corner--tr"></div>
+  <div class="corner corner--bl"></div>
+  <div class="corner corner--br"></div>
+
+  <div class="stage">
+
+    <!-- I-beam logo inline SVG -->
+    <svg class="mark" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="mg" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+          <stop offset="0%" stop-color="#f2ede3"/>
+          <stop offset="100%" stop-color="#c8bfa8"/>
+        </linearGradient>
+        <radialGradient id="dg" cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#e8c97a"/>
+          <stop offset="100%" stop-color="#b89040"/>
+        </radialGradient>
+      </defs>
+      <!-- Top bar -->
+      <rect x="18" y="16" width="36" height="7" rx="2" fill="url(#mg)"/>
+      <!-- Stem -->
+      <rect x="32" y="21" width="8" height="30" rx="1.5" fill="url(#mg)"/>
+      <!-- Bottom bar -->
+      <rect x="18" y="49" width="36" height="7" rx="2" fill="url(#mg)"/>
+      <!-- Gold dot -->
+      <circle cx="36" cy="63" r="2.5" fill="url(#dg)"/>
+    </svg>
+
+    <span class="brand">Incharj</span>
+
+    <div class="divider"></div>
+
+    <span class="status">Connecting your workspace</span>
+
+    <div class="dots">
+      <div class="dot"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+
   </div>
+
   <script>
-    // Forward all query params to the custom URI scheme so the app catches them
+    // Forward all query params to the local callback server in the app
     const params = window.location.search;
-    window.location.href = "incharj://oauth/callback" + params;
+    if (params) {
+      window.location.href = "http://127.0.0.1:12346/callback" + params;
+    }
   </script>
 </body>
 </html>
