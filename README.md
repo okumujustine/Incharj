@@ -32,7 +32,7 @@ A fast, local-first desktop search app for your files and cloud documents — bu
 ### Setup
 
 ```bash
-git clone https://github.com/your-username/incharj.git
+git clone https://github.com/okumujustine/Incharj.git
 cd incharj
 npm install
 ```

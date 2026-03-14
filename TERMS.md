@@ -20,6 +20,6 @@ These terms may be updated at any time. Continued use of the app constitutes acc
 
 ## Contact
 
-For questions, open an issue at [github.com/okumujustine/pgdoctor-cli](https://github.com/okumujustine/pgdoctor-cli/issues).
+For questions, open an issue at [github.com/okumujustine/Incharj](https://github.com/okumujustine/Incharj/issues).
 
 _Last updated: March 2026_
