@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Connecting to Incharj…</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #1a1917; color: #f5f0e8;
+           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .box { text-align: center; }
+    h2 { font-size: 1.2rem; font-weight: 500; margin: 0 0 8px; }
+    p  { font-size: 0.85rem; opacity: 0.5; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>Connecting to Incharj…</h2>
+    <p>You can close this tab.</p>
+  </div>
+  <script>
+    // Forward all query params to the custom URI scheme so the app catches them
+    const params = window.location.search;
+    window.location.href = "incharj://oauth/callback" + params;
+  </script>
+</body>
+</html>
