@@ -240,7 +240,8 @@ pub fn connect() -> Result<ConnectResult, String> {
         return Err("Notion OAuth credentials not configured. Set NOTION_CLIENT_ID and NOTION_CLIENT_SECRET at build time.".into());
     }
 
-    let port = find_free_port();
+    // Fixed port so the redirect URI is predictable and can be registered in Notion
+    let port: u16 = 12346;
     let redirect_uri = format!("http://127.0.0.1:{}/callback", port);
 
     // Random state for CSRF protection
@@ -259,8 +260,8 @@ pub fn connect() -> Result<ConnectResult, String> {
     open::that(&auth_url).map_err(|e| format!("Failed to open browser: {e}"))?;
 
     // Wait for OAuth callback
-    let server = tiny_http::Server::http(format!("127.0.0.1:{}", port))
-        .map_err(|e| format!("Failed to start callback server: {e}"))?;
+    let server = tiny_http::Server::http(format!("127.0.0.1:{port}"))
+        .map_err(|_| format!("Port {port} is already in use. Close any app using that port and try again."))?;
 
     let code = {
         let request = server
