@@ -29,15 +29,11 @@
     </clipPath>
   </defs>
 
-  <!-- Background -->
-  <rect width="1024" height="1024" rx="230" ry="230" fill="url(#bgGrad)"/>
+  <!-- Background — full square, macOS clips corners automatically -->
+  <rect width="1024" height="1024" fill="url(#bgGrad)"/>
 
   <!-- Warm glow -->
-  <rect width="1024" height="1024" rx="230" ry="230" fill="url(#glow)"/>
-
-  <!-- Very subtle grain texture via fractalNoise (visual depth) -->
-  <rect width="1024" height="1024" rx="230" ry="230" fill="none"
-        opacity="0.03" stroke="#f5f0e8" stroke-width="1"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
 
   <!-- ── The I-beam mark ── -->
   <!-- Top horizontal bar -->
@@ -50,7 +46,4 @@
   <!-- ── Accent dot (search / index indicator) ── -->
   <circle cx="512" cy="810" r="28" fill="url(#dotGrad)"/>
 
-  <!-- Subtle inner border for depth -->
-  <rect x="2" y="2" width="1020" height="1020" rx="229" ry="229"
-        fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.05"/>
 </svg>
