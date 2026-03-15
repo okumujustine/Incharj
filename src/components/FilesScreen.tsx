@@ -148,8 +148,10 @@ export default function FilesScreen({ files, isLoading, folders, onOpen }: Props
           <>
             {visible.map((file) => {
               const isDrive = file.source === "google_drive";
-              const displayName = isDrive && file.displayName ? file.displayName : splitPath(file.path).name;
-              const dir = isDrive ? null : splitPath(file.path).dir;
+              const isNotion = file.source === "notion";
+              const isCloud = isDrive || isNotion;
+              const displayName = isCloud && file.displayName ? file.displayName : splitPath(file.path).name;
+              const dir = isCloud ? null : splitPath(file.path).dir;
               const age = formatAge(file.modifiedAt);
               const label = getExtLabel(file.ext);
               const tone = getFileTone(file.ext);
@@ -171,6 +173,8 @@ export default function FilesScreen({ files, isLoading, folders, onOpen }: Props
                         <path d="M27.5 56.4H59.8L43.65 25 27.5 56.4z" fill="#FFBA00"/>
                       </svg>
                     </span>
+                  ) : isNotion ? (
+                    <span className="badge badge--notion" title="Notion">N</span>
                   ) : (
                     <span className={`badge badge--${tone}`}>{label}</span>
                   )}

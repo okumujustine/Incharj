@@ -507,6 +507,7 @@ button, input { font-family: var(--font-sans); font-size: 13px; }
 .badge--neutral { background: rgba(100,100,120,0.06); border-color: rgba(100,100,120,0.14); color: var(--c-text-secondary); }
 .badge--muted { background: rgba(0,0,0,0.04); border-color: var(--c-border); color: var(--c-text-muted); }
 .badge--drive { background: rgba(66,133,244,0.07); border-color: rgba(66,133,244,0.2); display: inline-flex; align-items: center; padding: 1px 5px; gap: 3px; }
+.badge--notion { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.15); color: #1a1a1a; font-size: 9px; font-weight: 700; }
 
 .files-toolbar-count { color: var(--c-text-tertiary); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
 .files-toolbar-count-value { font-weight: 600; color: var(--c-text-secondary); }
@@ -986,7 +987,7 @@ button, input { font-family: var(--font-sans); font-size: 13px; }
 .index-result-neutral strong { color: var(--c-text-primary); font-weight: 600; }
 
 /* ── Integrations grid ────────────────────────────────────────────────── */
-.integrations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.integrations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; align-items: stretch; }
 
 .int-tile { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .int-tile--connected { border-color: rgba(99,102,241,0.2); }
@@ -1008,7 +1009,7 @@ button, input { font-family: var(--font-sans); font-size: 13px; }
 .int-tile-stats strong { color: var(--c-text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
 .int-tile-stat-sep { color: var(--c-border-strong); }
 
-.int-tile-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.int-tile-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 4px; }
 .int-tile-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--c-text-secondary); }
 
 .int-tile-progress { display: flex; flex-direction: column; gap: 4px; }

@@ -36,8 +36,10 @@ function GoogleDriveSmallIcon() {
 
 export default function ResultCard({ result, index, selected, onSelect }: Props) {
   const isDrive = result.source === "google_drive";
-  const displayName = isDrive && result.displayName ? result.displayName : splitPath(result.path).name;
-  const dir = isDrive ? null : splitPath(result.path).dir;
+  const isNotion = result.source === "notion";
+  const isCloud = isDrive || isNotion;
+  const displayName = isCloud && result.displayName ? result.displayName : splitPath(result.path).name;
+  const dir = isCloud ? null : splitPath(result.path).dir;
   const age = formatAge(result.modifiedAt);
   const label = getExtLabel(result.ext);
   const tone = getFileTone(result.ext);
@@ -57,6 +59,8 @@ export default function ResultCard({ result, index, selected, onSelect }: Props)
             <span className="badge badge--drive shrink-0" title="Google Drive">
               <GoogleDriveSmallIcon />
             </span>
+          ) : isNotion ? (
+            <span className="badge badge--notion shrink-0" title="Notion">N</span>
           ) : (
             <span className={`badge badge--${tone} shrink-0`}>{label}</span>
           )}
