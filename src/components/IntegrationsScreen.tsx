@@ -6,6 +6,7 @@ interface Props {
   syncStates: Record<string, IntegrationSyncState>;
   onConnect: (id: string) => Promise<void>;
   onDisconnect: (id: string) => Promise<void>;
+  onResetSync: (id: string) => Promise<void>;
   onSync: (id: string) => Promise<void>;
 }
 
@@ -53,12 +54,14 @@ function IntegrationTile({
   syncState,
   onConnect,
   onDisconnect,
+  onResetSync,
   onSync,
 }: {
   integration: Integration;
   syncState: IntegrationSyncState;
   onConnect: () => void;
   onDisconnect: () => void;
+  onResetSync: () => void;
   onSync: () => void;
 }) {
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
@@ -148,6 +151,7 @@ function IntegrationTile({
                   : "Sync now"
                 }
               </button>
+              <button className="btn-secondary" onClick={onResetSync} disabled={isSyncing} title="Clear indexed files and re-sync">Reset sync</button>
               <button className="btn-secondary" onClick={() => setConfirmDisconnect(true)}>Disconnect</button>
             </>
           )
@@ -179,7 +183,7 @@ function SoonTile({ name }: { name: string }) {
 // ── Main screen ────────────────────────────────────────────────────────────
 const COMING_SOON = ["Dropbox", "OneDrive", "Confluence", "SharePoint", "Box", "Slack"];
 
-export default function IntegrationsScreen({ integrations, syncStates, onConnect, onDisconnect, onSync }: Props) {
+export default function IntegrationsScreen({ integrations, syncStates, onConnect, onDisconnect, onResetSync, onSync }: Props) {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -215,6 +219,7 @@ export default function IntegrationsScreen({ integrations, syncStates, onConnect
                 syncState={syncStates[integration.id] ?? { status: "idle", indexed: null, error: null }}
                 onConnect={() => handleConnect(integration.id)}
                 onDisconnect={() => onDisconnect(integration.id)}
+                onResetSync={() => onResetSync(integration.id)}
                 onSync={() => onSync(integration.id)}
               />
             ))}

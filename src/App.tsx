@@ -327,6 +327,12 @@ export default function App() {
     await loadIntegrations();
   };
 
+  const handleResetIntegrationSync = async (id: string) => {
+    if (!api) return;
+    await api.resetIntegrationSync(id);
+    await loadIntegrations();
+  };
+
   const handleSyncIntegration = async (id: string) => {
     if (!api) return;
     try {
@@ -653,6 +659,7 @@ export default function App() {
             syncStates={integrationSyncStates}
             onConnect={(id) => handleConnectIntegration(id)}
             onDisconnect={handleDisconnectIntegration}
+            onResetSync={handleResetIntegrationSync}
             onSync={handleSyncIntegration}
           />
         )}

@@ -78,6 +78,7 @@ const api: Window["incharjApi"] = {
   connectNotion: () => invoke("connect_notion") as Promise<string>,
   syncNotion: () => invoke("sync_notion") as Promise<any>,
   disconnectIntegration: (id: string) => invoke("disconnect_integration", { id }) as Promise<void>,
+  resetIntegrationSync: (id: string) => invoke("reset_integration_sync", { id }) as Promise<void>,
   onIntegrationSyncStart: (cb: (payload: { id: string }) => void) => {
     let off: Unlisten | null = null;
     void makeListener("integration:sync-start", cb).then((fn) => { off = fn; });

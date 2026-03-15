@@ -126,6 +126,7 @@ declare global {
       connectNotion: () => Promise<string>;
       syncNotion: () => Promise<{ indexed: number; skipped: number }>;
       disconnectIntegration: (id: string) => Promise<void>;
+      resetIntegrationSync: (id: string) => Promise<void>;
       onIntegrationSyncStart: (cb: (payload: { id: string }) => void) => () => void;
       onIntegrationSyncProgress: (cb: (payload: { current: number; total: number; fileName: string }) => void) => () => void;
       onIntegrationSyncComplete: (cb: (payload: { id: string; indexed: number; skipped: number }) => void) => () => void;

@@ -80,7 +80,8 @@ pub fn run() {
             commands::sync_google_drive,
             commands::connect_notion,
             commands::sync_notion,
-            commands::disconnect_integration
+            commands::disconnect_integration,
+            commands::reset_integration_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

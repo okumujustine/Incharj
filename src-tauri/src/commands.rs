@@ -799,3 +799,12 @@ pub fn disconnect_integration(id: String) -> Result<(), String> {
         _ => Err(format!("Unknown integration: {id}")),
     }
 }
+
+#[tauri::command]
+pub fn reset_integration_sync(id: String) -> Result<(), String> {
+    match id.as_str() {
+        "google_drive" => google_drive::reset_sync(),
+        "notion" => notion::reset_sync(),
+        _ => Err(format!("Unknown integration: {id}")),
+    }
+}

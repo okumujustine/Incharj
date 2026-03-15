@@ -492,6 +492,25 @@ pub fn sync(app: Option<&AppHandle>) -> Result<(i64, i64), String> {
 }
 
 /// Disconnect Google Drive: remove tokens and all Drive files from index.
+pub fn reset_sync() -> Result<(), String> {
+    ensure_schema().map_err(|e| e.to_string())?;
+    let conn = open_db().map_err(|e| e.to_string())?;
+    let paths: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT path FROM files WHERE source = 'google_drive'")
+            .map_err(|e| e.to_string())?;
+        let collected: Vec<String> = stmt.query_map([], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        collected
+    };
+    for path in paths {
+        let _ = conn.execute("DELETE FROM files_fts_chunks WHERE path = ?1", [path.as_str()]);
+        let _ = conn.execute("DELETE FROM files WHERE path = ?1", [path.as_str()]);
+    }
+    Ok(())
+}
+
 pub fn disconnect() -> Result<(), String> {
     ensure_schema().map_err(|e| e.to_string())?;
     let conn = open_db().map_err(|e| e.to_string())?;
