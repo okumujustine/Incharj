@@ -1,6 +1,9 @@
 import { config } from "../config";
 import { BaseConnector, type ConnectorDocument } from "./base";
 import { registerConnector } from "./registry";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("google-drive");
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -101,7 +104,7 @@ export class GoogleDriveConnector extends BaseConnector {
       const params = new URLSearchParams({
         q: query,
         fields: "nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,owners,size)",
-        pageSize: "100"
+        pageSize: "20"
       });
       if (pageToken) {
         params.set("pageToken", pageToken);
@@ -117,6 +120,8 @@ export class GoogleDriveConnector extends BaseConnector {
         nextPageToken?: string;
         files?: Array<Record<string, unknown>>;
       };
+
+      log.debug({ fileCount: data.files?.length ?? 0 }, "google drive page fetched");
 
       for (const file of data.files ?? []) {
         const mimeType = String(file.mimeType ?? "");

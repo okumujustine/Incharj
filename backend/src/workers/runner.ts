@@ -4,7 +4,10 @@ import { getConnector } from "../connectors/registry";
 import { decryptCredentials, encryptCredentials } from "../utils/security";
 import { SQL_UPDATE_CONNECTOR_AFTER_SYNC } from "../sql/connectors";
 import { SQL_COUNT_CONNECTOR_DOCS } from "../sql/sync-jobs";
+import { createLogger } from "../utils/logger";
 import type { ConnectorModel, RunResult } from "../types/connector";
+
+const log = createLogger("runner");
 
 export async function runSync(connectorModel: ConnectorModel): Promise<RunResult> {
   let credentials = connectorModel.credentials
@@ -29,9 +32,7 @@ export async function runSync(connectorModel: ConnectorModel): Promise<RunResult
   let docsSkipped = 0;
   let docsErrored = 0;
 
-  let docsLimit = 20; // TODO: remove for production
   for await (const docMeta of connector.listDocuments()) {
-    if (docsLimit-- <= 0) break;
     try {
       const content = await connector.fetchContent(docMeta.external_id, docMeta.metadata ?? {});
       const ingestionClient = await pool.connect();
@@ -46,14 +47,22 @@ export async function runSync(connectorModel: ConnectorModel): Promise<RunResult
         await ingestionClient.query("COMMIT");
         if (result === "indexed") docsIndexed += 1;
         else docsSkipped += 1;
-      } catch {
+      } catch (err) {
         await ingestionClient.query("ROLLBACK");
         docsErrored += 1;
+        log.error(
+          { err, connectorId: connectorModel.id, externalId: docMeta.external_id },
+          "failed to ingest document"
+        );
       } finally {
         ingestionClient.release();
       }
-    } catch {
+    } catch (err) {
       docsErrored += 1;
+      log.error(
+        { err, connectorId: connectorModel.id, externalId: docMeta.external_id },
+        "failed to fetch document content"
+      );
     }
   }
 
