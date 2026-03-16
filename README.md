@@ -14,7 +14,9 @@ docker compose -f docker-compose.dev.yml up
 **Without Docker** (Node 20+ required)
 
 ```bash
-cd backend && npm install && npm run dev     # API
-cd backend && npm run worker                 # worker (separate terminal)
-cd frontend && npm install && npm run dev    # frontend
+npm install              # install all workspaces from root
+
+npm run dev:api          # API
+npm run dev:worker       # worker (separate terminal)
+npm run dev:web          # frontend
 ```
