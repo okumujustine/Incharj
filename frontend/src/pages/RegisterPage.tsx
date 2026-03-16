@@ -1,0 +1,127 @@
+import React, { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, Zap } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
+
+export function RegisterPage() {
+  const navigate = useNavigate()
+  const { register } = useAuth()
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setIsLoading(true)
+
+    try {
+      await register({ full_name: fullName, email, password })
+      navigate('/orgs')
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        'Registration failed. Please try again.'
+      setError(message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 mb-8">
+          <div className="w-7 h-7 bg-accent/20 border border-accent/30 rounded flex items-center justify-center">
+            <Zap size={14} className="text-accent" />
+          </div>
+          <span className="text-base font-semibold text-text-primary tracking-tight">
+            Incharj
+          </span>
+        </div>
+
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-text-primary mb-1">Create account</h1>
+          <p className="text-sm text-text-muted">Get started with Incharj for free</p>
+        </div>
+
+        <div className="bg-bg-surface border border-border rounded p-6">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <Input
+              label="Full name"
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Ada Lovelace"
+              autoComplete="name"
+              required
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+              autoComplete="email"
+              required
+            />
+            <Input
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Min 8 characters"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              rightElement={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="hover:text-text-secondary transition-colors"
+                >
+                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              }
+            />
+
+            {error && (
+              <div className="bg-error/10 border border-error/20 rounded px-3 py-2">
+                <p className="text-xs text-error">{error}</p>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              isLoading={isLoading}
+              className="w-full mt-1"
+            >
+              Create account
+            </Button>
+          </form>
+        </div>
+
+        <p className="text-center text-sm text-text-muted mt-5">
+          Already have an account?{' '}
+          <Link to="/login" className="text-accent hover:text-accent-hover transition-colors">
+            Sign in
+          </Link>
+        </p>
+
+        <p className="text-center text-xs text-text-muted mt-4">
+          By creating an account, you agree to our{' '}
+          <span className="text-text-secondary">Terms of Service</span> and{' '}
+          <span className="text-text-secondary">Privacy Policy</span>.
+        </p>
+      </div>
+    </div>
+  )
+}
