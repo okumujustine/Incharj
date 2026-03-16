@@ -11,6 +11,7 @@ export default async function searchRoutes(api: FastifyInstance) {
     const queryParams = request.query as Record<string, string>;
     const organization = await getOrgBySlug(orgSlug);
     await getCurrentMembership(orgSlug, currentUser.id);
+    if (!queryParams.q?.trim()) return { query: "", total: 0, results: [], limit: 20, offset: 0 };
     return withTransaction((client) =>
       fullTextSearch(client, {
         orgId: organization.id,

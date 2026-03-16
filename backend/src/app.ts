@@ -40,7 +40,10 @@ export async function buildApp() {
       return;
     }
     request.log.error(error);
-    reply.status(500).send({ detail: "Internal server error" });
+    const message = config.isProduction
+      ? "Internal server error"
+      : (error instanceof Error ? error.message : String(error));
+    reply.status(500).send({ detail: message });
   });
 
   app.get("/health", async () => ({ status: "ok", version: "1.0.0" }));
