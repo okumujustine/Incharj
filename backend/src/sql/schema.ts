@@ -1,7 +1,7 @@
 export const DDL_INITIALIZE = `
-    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
-    CREATE EXTENSION IF NOT EXISTS "unaccent";
+    DO $$ BEGIN CREATE EXTENSION IF NOT EXISTS "pgcrypto"; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    DO $$ BEGIN CREATE EXTENSION IF NOT EXISTS "pg_trgm"; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    DO $$ BEGIN CREATE EXTENSION IF NOT EXISTS "unaccent"; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
