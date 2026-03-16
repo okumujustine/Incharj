@@ -52,22 +52,20 @@ export function buildFtsQuery(whereClause: string, limitParam: number, offsetPar
 
 export function buildFtsCountQuery(whereClause: string): string {
   return `
-    WITH tsq AS (SELECT websearch_to_tsquery('english', $2) AS q),
-    candidates AS (
-      SELECT
-        (
-          setweight(coalesce(d.search_vector, to_tsvector('english', coalesce(d.title, ''))), 'A') ||
-          setweight(coalesce(
-            (SELECT tsvector_agg(coalesce(dc.search_vector, to_tsvector('english', left(dc.content, 10000))))
-             FROM document_chunks dc WHERE dc.document_id = d.id),
-            to_tsvector('')
-          ), 'B')
-        ) AS sv
-      FROM documents d
-      JOIN connectors c ON c.id = d.connector_id
-      WHERE ${whereClause}
-    )
-    SELECT count(*)::int AS total FROM candidates, tsq WHERE tsq.q @@ candidates.sv;
+    WITH tsq AS (SELECT websearch_to_tsquery('english', $2) AS q)
+    SELECT count(*)::int AS total
+    FROM documents d
+    JOIN connectors c ON c.id = d.connector_id
+    CROSS JOIN tsq
+    WHERE ${whereClause}
+      AND (
+        tsq.q @@ coalesce(d.search_vector, to_tsvector('english', coalesce(d.title, '')))
+        OR EXISTS (
+          SELECT 1 FROM document_chunks dc
+          WHERE dc.document_id = d.id
+            AND tsq.q @@ coalesce(dc.search_vector, to_tsvector('english', left(dc.content, 10000)))
+        )
+      );
   `;
 }
 
