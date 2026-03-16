@@ -105,4 +105,5 @@ export const SQL_CHECK_CONNECTOR_ACTIVE_JOB = `
 export const SQL_INSERT_SCHEDULED_JOB = `
   INSERT INTO sync_jobs (connector_id, org_id, triggered_by, status)
   VALUES ($1, $2, 'scheduled', 'pending')
+  RETURNING id
 `;

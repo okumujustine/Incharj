@@ -13,6 +13,7 @@ import {
   getConnectorOr404,
 } from "../sql/connectors";
 import { SQL_INSERT_SYNC_JOB } from "../sql/sync-jobs";
+import { syncQueue } from "../workers/queue";
 import { getOrgBySlug } from "../sql/orgs";
 import { mapConnector, mapSyncJob } from "../utils/serialization";
 
@@ -98,7 +99,11 @@ export default async function connectorRoutes(api: FastifyInstance) {
     const connector = await getConnectorOr404(connectorId, organization.id);
     if (!connector.credentials) throw new BadRequestError("Connector has no credentials - complete OAuth first");
     const result = await query(SQL_INSERT_SYNC_JOB, [connectorId, organization.id, "manual"]);
-    reply.status(202).send(mapSyncJob(result.rows[0]));
+    const syncJob = result.rows[0];
+    await syncQueue.add("sync", { syncJobId: syncJob.id, connectorId }, {
+      jobId: `sync:${syncJob.id}`,
+    });
+    reply.status(202).send(mapSyncJob(syncJob));
   });
 
   api.post("/connectors/:connectorId/pause", { preHandler: requireCurrentUser }, async (request) => {
