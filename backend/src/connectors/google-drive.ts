@@ -123,8 +123,14 @@ export class GoogleDriveConnector extends BaseConnector {
 
       log.debug({ fileCount: data.files?.length ?? 0 }, "google drive page fetched");
 
+      const MAX_BINARY_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
       for (const file of data.files ?? []) {
         const mimeType = String(file.mimeType ?? "");
+        const fileSize = typeof file.size === "string" ? parseInt(file.size, 10) : 0;
+        if (fileSize > MAX_BINARY_FILE_SIZE) {
+          log.debug({ externalId: file.id, fileSize }, "skipping large file");
+          continue;
+        }
         let ext: string | null = null;
         if (mimeType === "application/vnd.google-apps.document") ext = "gdoc";
         else if (mimeType === "application/vnd.google-apps.spreadsheet") ext = "gsheet";
@@ -191,7 +197,27 @@ export class GoogleDriveConnector extends BaseConnector {
     if (!response.ok) {
       throw new Error(await response.text());
     }
-    const content = await response.text();
-    return content.trim() ? content : null;
+
+    // Stream with a 2MB cap to avoid OOM on large exports
+    const MAX_CONTENT_BYTES = 2 * 1024 * 1024;
+    const reader = response.body?.getReader();
+    if (!reader) return null;
+
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    let result = "";
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.length;
+      result += decoder.decode(value, { stream: true });
+      if (totalBytes >= MAX_CONTENT_BYTES) {
+        await reader.cancel();
+        break;
+      }
+    }
+    result += decoder.decode();
+
+    return result.trim() ? result : null;
   }
 }
