@@ -16,7 +16,7 @@ export async function ingestDocument(
   orgId: string,
   connectorId: string
 ): Promise<"indexed" | "skipped"> {
-  const content = docData.content?.trim() ?? "";
+  const content = (docData.content?.trim() ?? "").replace(/\0/g, "");
   const contentHash = content ? sha256(content) : null;
 
   const existingResult = await client.query<{ content_hash: string | null }>(
