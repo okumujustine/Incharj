@@ -57,9 +57,11 @@ export function buildFtsCountQuery(whereClause: string): string {
       SELECT
         (
           setweight(coalesce(d.search_vector, to_tsvector('english', coalesce(d.title, ''))), 'A') ||
-          setweight(to_tsvector('english', coalesce(
-            (SELECT string_agg(dc.content, ' ') FROM document_chunks dc WHERE dc.document_id = d.id), ''
-          )), 'B')
+          setweight(coalesce(
+            (SELECT tsvector_agg(coalesce(dc.search_vector, to_tsvector('english', left(dc.content, 10000))))
+             FROM document_chunks dc WHERE dc.document_id = d.id),
+            to_tsvector('')
+          ), 'B')
         ) AS sv
       FROM documents d
       JOIN connectors c ON c.id = d.connector_id
