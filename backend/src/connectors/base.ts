@@ -1,14 +1,6 @@
-export interface ConnectorDocument {
-  external_id: string;
-  url?: string | null;
-  title?: string | null;
-  kind?: string | null;
-  ext?: string | null;
-  author_name?: string | null;
-  author_email?: string | null;
-  mtime?: string | null;
-  metadata?: Record<string, unknown>;
-}
+import type { ConnectorDocument } from "../types/connector";
+
+export type { ConnectorDocument };
 
 export abstract class BaseConnector {
   connectorId: string;

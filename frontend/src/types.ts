@@ -43,6 +43,8 @@ export interface SyncJob {
   started_at: string | null
   finished_at: string | null
   docs_indexed: number
+  docs_skipped: number
+  docs_errored: number
   error_message: string | null
 }
 

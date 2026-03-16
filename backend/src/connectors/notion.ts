@@ -1,4 +1,4 @@
-import { config } from "../../config";
+import { config } from "../config";
 import { BaseConnector, type ConnectorDocument } from "./base";
 import { registerConnector } from "./registry";
 

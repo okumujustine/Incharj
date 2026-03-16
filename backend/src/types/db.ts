@@ -1,14 +1,4 @@
-import type { FastifyReply, FastifyRequest } from "fastify";
 import type { PoolClient } from "pg";
-
-export interface AuthenticatedRequest extends FastifyRequest {
-  currentUser?: DbUser;
-}
-
-export interface AppContext {
-  request: AuthenticatedRequest;
-  reply: FastifyReply;
-}
 
 export interface DbUser {
   id: string;

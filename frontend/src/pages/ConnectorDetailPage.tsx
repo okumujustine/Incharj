@@ -1,8 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft,
   RefreshCw,
   Pause,
   Play,
@@ -13,8 +12,11 @@ import {
   Plug,
   CheckCircle,
   XCircle,
+  AlertTriangle,
   Clock,
   Loader2,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { connectorsService } from '../services/connectors'
@@ -31,56 +33,156 @@ const CONNECTOR_ICONS: Record<string, React.ElementType> = {
   slack: MessageSquare,
 }
 
+function formatDuration(startedAt: string | null, finishedAt: string | null): string {
+  if (!startedAt || !finishedAt) return '—'
+  const secs = Math.round(
+    (new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 1000
+  )
+  if (secs < 60) return `${secs}s`
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`
+  const h = Math.floor(m / 60)
+  const rem = m % 60
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`
+}
+
 function SyncJobRow({ job }: { job: SyncJob }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const isPartial = job.status === 'done' && job.docs_errored > 0
+  const displayStatus = isPartial ? 'partial' : job.status
+
   const statusConfig: Record<
     string,
-    { icon: React.ReactNode; variant: 'success' | 'error' | 'info' | 'default' | 'warning' }
+    { icon: React.ReactNode; variant: 'success' | 'error' | 'info' | 'default' | 'warning'; label: string }
   > = {
     done: {
       icon: <CheckCircle size={14} className="text-success" />,
       variant: 'success',
+      label: 'done',
+    },
+    partial: {
+      icon: <AlertTriangle size={14} className="text-warning" />,
+      variant: 'warning',
+      label: 'partial',
     },
     failed: {
       icon: <XCircle size={14} className="text-error" />,
       variant: 'error',
+      label: 'failed',
     },
     running: {
       icon: <Loader2 size={14} className="text-accent animate-spin" />,
       variant: 'info',
+      label: 'running',
     },
     pending: {
       icon: <Clock size={14} className="text-text-muted" />,
       variant: 'default',
+      label: 'pending',
     },
   }
 
-  const { icon, variant } = statusConfig[job.status] ?? statusConfig.pending
-  const started = job.started_at
-    ? format(new Date(job.started_at), 'MMM d, HH:mm')
-    : '—'
-  const duration =
-    job.started_at && job.finished_at
-      ? `${Math.round((new Date(job.finished_at).getTime() - new Date(job.started_at).getTime()) / 1000)}s`
-      : '—'
+  const { icon, variant, label } = statusConfig[displayStatus] ?? statusConfig.pending
+  const started = job.started_at ? format(new Date(job.started_at), 'MMM d, HH:mm') : '—'
+  const startedFull = job.started_at ? format(new Date(job.started_at), 'MMM d yyyy, HH:mm:ss') : '—'
+  const finishedFull = job.finished_at ? format(new Date(job.finished_at), 'MMM d yyyy, HH:mm:ss') : '—'
+  const duration = formatDuration(job.started_at, job.finished_at)
 
   return (
-    <div className="flex items-center gap-4 px-5 py-3 border-b border-border last:border-0">
-      <div className="flex-shrink-0">{icon}</div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <Badge variant={variant}>{job.status}</Badge>
-          <span className="text-xs text-text-muted font-mono">
-            {job.docs_indexed} docs indexed
+    <div className="border-b border-border last:border-0">
+      <button
+        className="w-full flex items-center gap-4 px-5 py-3 text-left hover:bg-bg-elevated/50 transition-colors"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className="flex-shrink-0">{icon}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <Badge variant={variant}>{label}</Badge>
+            <span className="text-xs text-text-muted font-mono">
+              {job.docs_indexed} new · {job.docs_skipped} unchanged
+              {job.docs_errored > 0 && (
+                <span className="text-warning"> · {job.docs_errored} failed</span>
+              )}
+            </span>
+            <span className="text-2xs text-text-muted capitalize">
+              · {job.triggered_by ?? 'manual'}
+            </span>
+          </div>
+          {!expanded && job.error_message && (
+            <p className="text-xs text-error mt-1 truncate">{job.error_message}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="text-right">
+            <p className="text-xs text-text-secondary">{started}</p>
+            <p className="text-2xs text-text-muted font-mono">{duration}</p>
+          </div>
+          <span className="text-text-muted">
+            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </span>
         </div>
-        {job.error_message && (
-          <p className="text-xs text-error mt-1 truncate">{job.error_message}</p>
-        )}
-      </div>
-      <div className="text-right flex-shrink-0">
-        <p className="text-xs text-text-secondary">{started}</p>
-        <p className="text-2xs text-text-muted font-mono">{duration}</p>
-      </div>
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-4 grid grid-cols-2 gap-x-8 gap-y-2 bg-bg-elevated/30 border-t border-border/50">
+          <div className="col-span-2 pt-3 pb-1">
+            <p className="text-2xs text-text-muted uppercase tracking-wider font-mono">Details</p>
+          </div>
+
+          <div>
+            <p className="text-2xs text-text-muted font-mono mb-0.5">Started</p>
+            <p className="text-xs text-text-secondary font-mono">{startedFull}</p>
+          </div>
+          <div>
+            <p className="text-2xs text-text-muted font-mono mb-0.5">Finished</p>
+            <p className="text-xs text-text-secondary font-mono">{finishedFull}</p>
+          </div>
+
+          <div>
+            <p className="text-2xs text-text-muted font-mono mb-0.5">Triggered by</p>
+            <p className="text-xs text-text-secondary capitalize">{job.triggered_by ?? 'manual'}</p>
+          </div>
+          <div>
+            <p className="text-2xs text-text-muted font-mono mb-0.5">Duration</p>
+            <p className="text-xs text-text-secondary font-mono">{duration}</p>
+          </div>
+
+          <div>
+            <p className="text-2xs text-text-muted font-mono mb-0.5">Retrieved from source</p>
+            <p className="text-xs text-text-primary font-mono">
+              {job.docs_indexed + job.docs_skipped + job.docs_errored} docs
+            </p>
+          </div>
+          <div />
+
+          <div>
+            <p className="text-2xs text-text-muted font-mono mb-0.5">Indexed</p>
+            <p className="text-xs text-success font-mono">{job.docs_indexed} docs</p>
+          </div>
+          <div>
+            <p className="text-2xs text-text-muted font-mono mb-0.5">Unchanged</p>
+            <p className="text-xs text-text-secondary font-mono">{job.docs_skipped} docs</p>
+          </div>
+
+          {job.docs_errored > 0 && (
+            <div className="col-span-2">
+              <p className="text-2xs text-text-muted font-mono mb-0.5">Failed</p>
+              <p className="text-xs text-warning font-mono">{job.docs_errored} docs failed to index</p>
+            </div>
+          )}
+
+          {job.error_message && (
+            <div className="col-span-2">
+              <p className="text-2xs text-text-muted font-mono mb-0.5">Error</p>
+              <p className="text-xs text-error bg-error/5 border border-error/20 rounded px-3 py-2 font-mono whitespace-pre-wrap break-all">
+                {job.error_message}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

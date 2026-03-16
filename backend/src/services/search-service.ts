@@ -1,20 +1,14 @@
 import type { PoolClient } from "pg";
+import type { SearchOptions, SearchResult, SearchResponse } from "../types/search";
+import {
+  buildFtsCountQuery,
+  buildFtsQuery,
+  buildFuzzyCountQuery,
+  buildFuzzyQuery,
+} from "../sql/search";
 
-interface SearchOptions {
-  orgId: string;
-  query: string;
-  connectorId?: string;
-  kind?: string;
-  fromDate?: string;
-  toDate?: string;
-  limit?: number;
-  offset?: number;
-}
 
-export async function fullTextSearch(
-  client: PoolClient,
-  options: SearchOptions
-) {
+function buildFilters(options: SearchOptions): { values: unknown[]; whereClause: string } {
   const values: unknown[] = [options.orgId, options.query];
   const filters = ["d.org_id = $1"];
 
@@ -35,117 +29,71 @@ export async function fullTextSearch(
     filters.push(`d.mtime <= $${values.length}`);
   }
 
-  const whereClause = filters.join(" AND ");
+  return { values, whereClause: filters.join(" AND ") };
+}
+
+function mapRow(row: Record<string, unknown>): SearchResult {
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    url: row.url as string | null,
+    kind: row.kind as string | null,
+    ext: row.ext as string | null,
+    snippet: (row.snippet as string) ?? "",
+    score: Number(row.score),
+    mtime: row.mtime as string | null,
+    connector_kind: row.connector_kind as string,
+    connector_name: row.connector_name as string,
+  };
+}
+
+async function ftSearch(client: PoolClient, options: SearchOptions): Promise<SearchResponse | null> {
+  const { values, whereClause } = buildFilters(options);
   const limit = options.limit ?? 20;
   const offset = options.offset ?? 0;
   values.push(limit, offset);
 
-  const sql = `
-    WITH tsq AS (
-      SELECT websearch_to_tsquery('english', $2) AS q
-    ),
-    candidates AS (
-      SELECT
-        d.id,
-        d.title,
-        d.url,
-        d.kind,
-        d.ext,
-        d.mtime,
-        d.indexed_at,
-        c.kind AS connector_kind,
-        c.name AS connector_name,
-        dc_best.content AS best_chunk_content,
-        (
-          setweight(coalesce(d.search_vector, to_tsvector('english', coalesce(d.title, ''))), 'A') ||
-          setweight(coalesce(dc_best.search_vector, to_tsvector('english', coalesce(dc_best.content, ''))), 'B')
-        ) AS sv
-      FROM documents d
-      JOIN connectors c ON c.id = d.connector_id
-      LEFT JOIN LATERAL (
-        SELECT dc.content, dc.search_vector
-        FROM document_chunks dc
-        WHERE dc.document_id = d.id
-        ORDER BY ts_rank_cd(
-          coalesce(dc.search_vector, to_tsvector('english', dc.content)),
-          (SELECT q FROM tsq)
-        ) DESC
-        LIMIT 1
-      ) dc_best ON true
-      WHERE ${whereClause}
-    ),
-    ranked AS (
-      SELECT
-        cand.*,
-        ts_rank_cd(cand.sv, tsq.q, 32) *
-          exp(-extract(epoch FROM (now() - coalesce(cand.mtime, cand.indexed_at))) / (90.0 * 86400))
-          AS raw_score
-      FROM candidates cand, tsq
-      WHERE tsq.q @@ cand.sv
-    )
-    SELECT
-      id,
-      title,
-      url,
-      kind,
-      ext,
-      mtime,
-      connector_kind,
-      connector_name,
-      raw_score AS score,
-      ts_headline(
-        'english',
-        coalesce(best_chunk_content, title, ''),
-        (SELECT q FROM tsq),
-        'MaxFragments=2, MaxWords=40, MinWords=10, StartSel=<mark>, StopSel=</mark>'
-      ) AS snippet
-    FROM ranked
-    ORDER BY raw_score DESC
-    LIMIT $${values.length - 1} OFFSET $${values.length};
-  `;
-
-  const results = await client.query(sql, values);
-
+  const sql = buildFtsQuery(whereClause, values.length - 1, values.length);
+  const countSql = buildFtsCountQuery(whereClause);
   const countValues = values.slice(0, -2);
-  const countSql = `
-    WITH tsq AS (
-      SELECT websearch_to_tsquery('english', $2) AS q
-    ),
-    candidates AS (
-      SELECT
-        (
-          setweight(coalesce(d.search_vector, to_tsvector('english', coalesce(d.title, ''))), 'A') ||
-          setweight(to_tsvector('english', coalesce(
-            (SELECT string_agg(dc.content, ' ') FROM document_chunks dc WHERE dc.document_id = d.id),
-            ''
-          )), 'B')
-        ) AS sv
-      FROM documents d
-      JOIN connectors c ON c.id = d.connector_id
-      WHERE ${whereClause}
-    )
-    SELECT count(*)::int AS total
-    FROM candidates, tsq
-    WHERE tsq.q @@ candidates.sv;
-  `;
-  const countResult = await client.query<{ total: number }>(countSql, countValues);
+
+  const [results, countResult] = await Promise.all([
+    client.query(sql, values),
+    client.query<{ total: number }>(countSql, countValues),
+  ]);
+
+  const total = countResult.rows[0]?.total ?? 0;
+  if (total === 0) return null;
+
+  return { total, results: results.rows.map(mapRow), query: options.query, offset, limit };
+}
+
+async function fuzzySearch(client: PoolClient, options: SearchOptions): Promise<SearchResponse> {
+  const { values, whereClause } = buildFilters(options);
+  const limit = options.limit ?? 20;
+  const offset = options.offset ?? 0;
+  values.push(limit, offset);
+
+  const sql = buildFuzzyQuery(whereClause, values.length - 1, values.length);
+  const countSql = buildFuzzyCountQuery(whereClause);
+  const countValues = values.slice(0, -2);
+
+  const [results, countResult] = await Promise.all([
+    client.query(sql, values),
+    client.query<{ total: number }>(countSql, countValues),
+  ]);
 
   return {
     total: countResult.rows[0]?.total ?? 0,
-    results: results.rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      url: row.url,
-      kind: row.kind,
-      ext: row.ext,
-      snippet: row.snippet,
-      score: Number(row.score),
-      mtime: row.mtime,
-      connector_kind: row.connector_kind,
-      connector_name: row.connector_name
-    })),
+    results: results.rows.map(mapRow),
     query: options.query,
     offset,
-    limit
+    limit,
   };
+}
+
+export async function fullTextSearch(client: PoolClient, options: SearchOptions): Promise<SearchResponse> {
+  const ftsResult = await ftSearch(client, options);
+  if (ftsResult !== null) return ftsResult;
+  return fuzzySearch(client, options);
 }

@@ -3,10 +3,21 @@ import { config } from "../config";
 import { query } from "../db";
 import { ConflictError, UnauthorizedError } from "../errors";
 import {
+  SQL_CHECK_EMAIL_EXISTS,
+  SQL_DELETE_SESSION_BY_ID,
+  SQL_DELETE_SESSION_BY_TOKEN,
+  SQL_INSERT_SESSION,
+  SQL_INSERT_USER,
+  SQL_SELECT_SESSION_BY_TOKEN,
+  SQL_SELECT_USER_FOR_LOGIN,
+  SQL_SELECT_USER_IS_ACTIVE,
+} from "../sql/auth";
+import { SQL_CHECK_ORG_SLUG_EXISTS, SQL_INSERT_MEMBERSHIP, SQL_INSERT_ORG } from "../sql/orgs";
+import {
   createAccessToken,
   createRefreshToken,
   hashPassword,
-  verifyPassword
+  verifyPassword,
 } from "../utils/security";
 
 function slugify(value: string): string {
@@ -17,15 +28,9 @@ function slugify(value: string): string {
 async function uniqueSlug(client: PoolClient, base: string): Promise<string> {
   let slug = base;
   let counter = 1;
-
   while (true) {
-    const result = await client.query<{ id: string }>(
-      "SELECT id FROM organizations WHERE slug = $1",
-      [slug]
-    );
-    if (!result.rowCount) {
-      return slug;
-    }
+    const result = await client.query<{ id: string }>(SQL_CHECK_ORG_SLUG_EXISTS, [slug]);
+    if (!result.rowCount) return slug;
     slug = `${base}-${counter}`;
     counter += 1;
   }
@@ -35,72 +40,38 @@ async function buildTokenResponse(userId: string) {
   return {
     access_token: await createAccessToken({ sub: userId }),
     token_type: "bearer",
-    expires_in: config.accessTokenExpireMinutes * 60
+    expires_in: config.accessTokenExpireMinutes * 60,
   };
 }
 
 export async function registerUser(
   client: PoolClient,
-  payload: {
-    email: string;
-    password: string;
-    full_name?: string | null;
-    org_name?: string | null;
-  },
+  payload: { email: string; password: string; full_name?: string | null; org_name?: string | null },
   meta: { userAgent?: string; ipAddress?: string }
 ) {
-  const existing = await client.query<{ id: string }>(
-    "SELECT id FROM users WHERE email = $1",
-    [payload.email]
-  );
-  if (existing.rowCount) {
-    throw new ConflictError("Email already registered");
-  }
+  const existing = await client.query<{ id: string }>(SQL_CHECK_EMAIL_EXISTS, [payload.email]);
+  if (existing.rowCount) throw new ConflictError("Email already registered");
 
   const hashedPassword = await hashPassword(payload.password);
-  const userResult = await client.query<{ id: string }>(
-    `INSERT INTO users (email, hashed_password, full_name, is_verified, is_active)
-     VALUES ($1, $2, $3, false, true)
-     RETURNING id`,
-    [payload.email, hashedPassword, payload.full_name ?? null]
-  );
+  const userResult = await client.query<{ id: string }>(SQL_INSERT_USER, [
+    payload.email, hashedPassword, payload.full_name ?? null,
+  ]);
   const userId = userResult.rows[0].id;
 
-  const orgName =
-    payload.org_name ??
-    `${payload.full_name ?? payload.email.split("@")[0]}'s Workspace`;
+  const orgName = payload.org_name ?? `${payload.full_name ?? payload.email.split("@")[0]}'s Workspace`;
   const orgSlug = await uniqueSlug(client, slugify(orgName));
-  const orgResult = await client.query<{ id: string }>(
-    `INSERT INTO organizations (slug, name, plan)
-     VALUES ($1, $2, 'free')
-     RETURNING id`,
-    [orgSlug, orgName]
-  );
+  const orgResult = await client.query<{ id: string }>(SQL_INSERT_ORG, [orgSlug, orgName]);
   const orgId = orgResult.rows[0].id;
 
-  await client.query(
-    `INSERT INTO memberships (org_id, user_id, role)
-     VALUES ($1, $2, 'owner')`,
-    [orgId, userId]
-  );
+  await client.query(SQL_INSERT_MEMBERSHIP, [orgId, userId, "owner"]);
 
   const refreshToken = createRefreshToken();
-  await client.query(
-    `INSERT INTO sessions (user_id, refresh_token, user_agent, ip_address, expires_at)
-     VALUES ($1, $2, $3, $4, now() + ($5 || ' days')::interval)`,
-    [
-      userId,
-      refreshToken,
-      meta.userAgent ?? null,
-      meta.ipAddress ?? null,
-      String(config.refreshTokenExpireDays)
-    ]
-  );
+  await client.query(SQL_INSERT_SESSION, [
+    userId, refreshToken, meta.userAgent ?? null, meta.ipAddress ?? null,
+    String(config.refreshTokenExpireDays),
+  ]);
 
-  return {
-    tokenResponse: await buildTokenResponse(userId),
-    refreshToken
-  };
+  return { tokenResponse: await buildTokenResponse(userId), refreshToken };
 }
 
 export async function loginUser(
@@ -108,43 +79,21 @@ export async function loginUser(
   payload: { email: string; password: string },
   meta: { userAgent?: string; ipAddress?: string }
 ) {
-  const result = await client.query<{
-    id: string;
-    hashed_password: string | null;
-    is_active: boolean;
-  }>(
-    `SELECT id, hashed_password, is_active
-     FROM users WHERE email = $1`,
-    [payload.email]
+  const result = await client.query<{ id: string; hashed_password: string | null; is_active: boolean }>(
+    SQL_SELECT_USER_FOR_LOGIN, [payload.email]
   );
   const user = result.rows[0];
-  if (!user?.hashed_password) {
-    throw new UnauthorizedError("Invalid credentials");
-  }
-  if (!(await verifyPassword(payload.password, user.hashed_password))) {
-    throw new UnauthorizedError("Invalid credentials");
-  }
-  if (!user.is_active) {
-    throw new UnauthorizedError("Account is disabled");
-  }
+  if (!user?.hashed_password) throw new UnauthorizedError("Invalid credentials");
+  if (!(await verifyPassword(payload.password, user.hashed_password))) throw new UnauthorizedError("Invalid credentials");
+  if (!user.is_active) throw new UnauthorizedError("Account is disabled");
 
   const refreshToken = createRefreshToken();
-  await client.query(
-    `INSERT INTO sessions (user_id, refresh_token, user_agent, ip_address, expires_at)
-     VALUES ($1, $2, $3, $4, now() + ($5 || ' days')::interval)`,
-    [
-      user.id,
-      refreshToken,
-      meta.userAgent ?? null,
-      meta.ipAddress ?? null,
-      String(config.refreshTokenExpireDays)
-    ]
-  );
+  await client.query(SQL_INSERT_SESSION, [
+    user.id, refreshToken, meta.userAgent ?? null, meta.ipAddress ?? null,
+    String(config.refreshTokenExpireDays),
+  ]);
 
-  return {
-    tokenResponse: await buildTokenResponse(user.id),
-    refreshToken
-  };
+  return { tokenResponse: await buildTokenResponse(user.id), refreshToken };
 }
 
 export async function refreshSession(
@@ -152,14 +101,8 @@ export async function refreshSession(
   oldRefreshToken: string,
   meta: { userAgent?: string; ipAddress?: string }
 ) {
-  const sessionResult = await client.query<{
-    id: string;
-    user_id: string;
-    expires_at: string;
-  }>(
-    `SELECT id, user_id, expires_at
-     FROM sessions WHERE refresh_token = $1`,
-    [oldRefreshToken]
+  const sessionResult = await client.query<{ id: string; user_id: string; expires_at: string }>(
+    SQL_SELECT_SESSION_BY_TOKEN, [oldRefreshToken]
   );
   const session = sessionResult.rows[0];
   if (!session || new Date(session.expires_at) < new Date()) {
@@ -167,35 +110,22 @@ export async function refreshSession(
   }
 
   const userResult = await client.query<{ id: string; is_active: boolean }>(
-    "SELECT id, is_active FROM users WHERE id = $1",
-    [session.user_id]
+    SQL_SELECT_USER_IS_ACTIVE, [session.user_id]
   );
   const user = userResult.rows[0];
-  if (!user || !user.is_active) {
-    throw new UnauthorizedError("User not found or inactive");
-  }
+  if (!user || !user.is_active) throw new UnauthorizedError("User not found or inactive");
 
-  await client.query("DELETE FROM sessions WHERE id = $1", [session.id]);
+  await client.query(SQL_DELETE_SESSION_BY_ID, [session.id]);
 
   const refreshToken = createRefreshToken();
-  await client.query(
-    `INSERT INTO sessions (user_id, refresh_token, user_agent, ip_address, expires_at)
-     VALUES ($1, $2, $3, $4, now() + ($5 || ' days')::interval)`,
-    [
-      user.id,
-      refreshToken,
-      meta.userAgent ?? null,
-      meta.ipAddress ?? null,
-      String(config.refreshTokenExpireDays)
-    ]
-  );
+  await client.query(SQL_INSERT_SESSION, [
+    user.id, refreshToken, meta.userAgent ?? null, meta.ipAddress ?? null,
+    String(config.refreshTokenExpireDays),
+  ]);
 
-  return {
-    tokenResponse: await buildTokenResponse(user.id),
-    refreshToken
-  };
+  return { tokenResponse: await buildTokenResponse(user.id), refreshToken };
 }
 
 export async function logoutSession(refreshToken: string) {
-  await query("DELETE FROM sessions WHERE refresh_token = $1", [refreshToken]);
+  await query(SQL_DELETE_SESSION_BY_TOKEN, [refreshToken]);
 }

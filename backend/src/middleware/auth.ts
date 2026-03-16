@@ -1,7 +1,12 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { query } from "../db";
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "../errors";
-import type { AuthenticatedRequest, DbMembership, DbUser } from "../types";
+import {
+  SQL_SELECT_MEMBERSHIP_BY_ORG_USER,
+  SQL_SELECT_ORG_ID_BY_SLUG,
+  SQL_SELECT_USER_BY_ID,
+} from "../sql/auth";
+import type { AuthenticatedRequest, DbMembership, DbUser } from "../types/index";
 import { decodeAccessToken } from "../utils/security";
 
 export async function requireCurrentUser(
@@ -19,11 +24,7 @@ export async function requireCurrentUser(
     throw new UnauthorizedError("Invalid or expired token");
   }
 
-  const result = await query<DbUser>(
-    `SELECT id, email, hashed_password, full_name, avatar_url, is_verified, is_active, created_at
-     FROM users WHERE id = $1`,
-    [userId]
-  );
+  const result = await query<DbUser>(SQL_SELECT_USER_BY_ID, [userId]);
   const user = result.rows[0];
   if (!user || !user.is_active) {
     throw new UnauthorizedError("User not found or inactive");
@@ -44,20 +45,13 @@ export async function getCurrentMembership(
   orgSlug: string,
   userId: string
 ): Promise<DbMembership> {
-  const orgResult = await query<{ id: string }>(
-    "SELECT id FROM organizations WHERE slug = $1",
-    [orgSlug]
-  );
+  const orgResult = await query<{ id: string }>(SQL_SELECT_ORG_ID_BY_SLUG, [orgSlug]);
   const org = orgResult.rows[0];
   if (!org) {
     throw new NotFoundError("Organization not found");
   }
 
-  const membershipResult = await query<DbMembership>(
-    `SELECT id, org_id, user_id, role, joined_at
-     FROM memberships WHERE org_id = $1 AND user_id = $2`,
-    [org.id, userId]
-  );
+  const membershipResult = await query<DbMembership>(SQL_SELECT_MEMBERSHIP_BY_ORG_USER, [org.id, userId]);
   const membership = membershipResult.rows[0];
   if (!membership) {
     throw new ForbiddenError("Not a member of this organization");
