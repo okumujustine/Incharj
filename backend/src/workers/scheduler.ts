@@ -14,7 +14,7 @@ export async function dispatchDueSyncs(): Promise<void> {
     const jobResult = await query<{ id: string }>(SQL_INSERT_SCHEDULED_JOB, [connector.id, connector.org_id]);
     const syncJobId = jobResult.rows[0].id;
     await syncQueue.add("sync", { syncJobId, connectorId: connector.id }, {
-      jobId: `sync:${syncJobId}`,
+      jobId: `sync-${syncJobId}`,
     });
   }
 }

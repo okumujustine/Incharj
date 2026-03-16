@@ -101,7 +101,7 @@ export default async function connectorRoutes(api: FastifyInstance) {
     const result = await query(SQL_INSERT_SYNC_JOB, [connectorId, organization.id, "manual"]);
     const syncJob = result.rows[0];
     await syncQueue.add("sync", { syncJobId: syncJob.id, connectorId }, {
-      jobId: `sync:${syncJob.id}`,
+      jobId: `sync-${syncJob.id}`,
     });
     reply.status(202).send(mapSyncJob(syncJob));
   });
