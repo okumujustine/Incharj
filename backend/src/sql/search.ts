@@ -9,8 +9,8 @@ export function buildFtsQuery(whereClause: string, limitParam: number, offsetPar
         c.kind AS connector_kind, c.name AS connector_name,
         dc_best.content AS best_chunk_content,
         (
-          setweight(coalesce(d.search_vector, to_tsvector('english', coalesce(d.title, ''))), 'A') ||
-          setweight(coalesce(dc_best.search_vector, to_tsvector('english', coalesce(dc_best.content, ''))), 'B')
+          setweight(coalesce(d.search_vector, to_tsvector('english', coalesce(left(d.title, 10000), ''))), 'A') ||
+          setweight(coalesce(dc_best.search_vector, to_tsvector('english', coalesce(left(dc_best.content, 50000), ''))), 'B')
         ) AS sv
       FROM documents d
       JOIN connectors c ON c.id = d.connector_id
@@ -19,7 +19,7 @@ export function buildFtsQuery(whereClause: string, limitParam: number, offsetPar
         FROM document_chunks dc
         WHERE dc.document_id = d.id
         ORDER BY ts_rank_cd(
-          coalesce(dc.search_vector, to_tsvector('english', dc.content)),
+          coalesce(dc.search_vector, to_tsvector('english', left(dc.content, 50000))),
           (SELECT q FROM tsq)
         ) DESC
         LIMIT 1
@@ -40,7 +40,7 @@ export function buildFtsQuery(whereClause: string, limitParam: number, offsetPar
       raw_score AS score,
       ts_headline(
         'english',
-        coalesce(best_chunk_content, title, ''),
+        left(coalesce(best_chunk_content, title, ''), 50000),
         (SELECT q FROM tsq),
         'MaxFragments=2, MaxWords=40, MinWords=10, StartSel=<mark>, StopSel=</mark>'
       ) AS snippet

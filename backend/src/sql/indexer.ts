@@ -28,7 +28,7 @@ export const SQL_DELETE_DOCUMENT_CHUNKS = `DELETE FROM document_chunks WHERE doc
 
 export const SQL_INSERT_DOCUMENT_CHUNK = `
   INSERT INTO document_chunks (document_id, org_id, chunk_index, content, token_count, search_vector)
-  VALUES ($1, $2, $3, $4, $5, to_tsvector('english', $4))
+  VALUES ($1, $2, $3, $4, $5, to_tsvector('english', left($4, 50000)))
 `;
 
 export const SQL_UPDATE_DOCUMENT_SEARCH_VECTOR = `
