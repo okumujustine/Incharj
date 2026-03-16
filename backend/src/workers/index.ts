@@ -18,7 +18,7 @@ async function main() {
   });
 
   const worker = new Worker(
-    "incharj:sync",
+    "incharj-sync",
     async (job) => {
       if (job.name === "dispatch") {
         await dispatchDueSyncs();
