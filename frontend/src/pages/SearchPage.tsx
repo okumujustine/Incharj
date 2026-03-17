@@ -3,12 +3,11 @@ import { useParams } from 'react-router-dom'
 import {
   Search,
   ExternalLink,
-  HardDrive,
-  FileText,
-  MessageSquare,
   X,
   AlertCircle,
   SlidersHorizontal,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
@@ -18,13 +17,9 @@ import { TopBar } from '../components/layout/TopBar'
 import { Badge } from '../components/ui/Badge'
 import { SkeletonList } from '../components/ui/SkeletonList'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ConnectorIcon } from '../components/ui/ConnectorIcon'
+import { FileTypeIcon } from '../components/ui/FileTypeIcon'
 import type { SearchResult, Connector } from '../types'
-
-const CONNECTOR_ICONS: Record<string, React.ReactNode> = {
-  google_drive: <HardDrive size={12} />,
-  notion: <FileText size={12} />,
-  slack: <MessageSquare size={12} />,
-}
 
 function renderSnippet(snippet: string) {
   const parts = snippet.split(/<<(.*?)>>/g)
@@ -39,14 +34,6 @@ function renderSnippet(snippet: string) {
     ) : (
       part
     )
-  )
-}
-
-function ConnectorIcon({ kind }: { kind: string }) {
-  return (
-    <span className="text-text-muted">
-      {CONNECTOR_ICONS[kind] ?? <FileText size={12} />}
-    </span>
   )
 }
 
@@ -105,15 +92,16 @@ function SearchResultItem({ result, isSelected, onSelect }: SearchResultItemProp
 
       {/* Meta row */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5 text-text-muted">
-          <ConnectorIcon kind={result.connector_kind} />
-          <span className="text-2xs font-mono">{result.connector_name}</span>
+        <div className="flex items-center gap-1.5">
+          <ConnectorIcon kind={result.connector_kind} size={12} />
+          <span className="text-2xs font-mono text-text-muted">{result.connector_name}</span>
         </div>
         <span className="text-text-muted text-2xs">·</span>
-        <Badge variant="default">{result.kind}</Badge>
-        {result.ext && (
-          <Badge variant="default">.{result.ext}</Badge>
-        )}
+        <div className="flex items-center gap-1">
+          <FileTypeIcon ext={result.ext} kind={result.kind} size={12} />
+          <Badge variant="default">{result.kind}</Badge>
+          {result.ext && <Badge variant="default">.{result.ext}</Badge>}
+        </div>
         {result.author_name && (
           <>
             <span className="text-text-muted text-2xs">·</span>
@@ -189,6 +177,76 @@ function FiltersRow({
   )
 }
 
+function Pagination({
+  page,
+  totalPages,
+  total,
+  pageSize,
+  onPageChange,
+}: {
+  page: number
+  totalPages: number
+  total: number
+  pageSize: number
+  onPageChange: (p: number) => void
+}) {
+  const from = (page - 1) * pageSize + 1
+  const to = Math.min(page * pageSize, total)
+
+  const pages: (number | 'ellipsis')[] = []
+  const range = new Set<number>()
+  range.add(1)
+  range.add(totalPages)
+  for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) range.add(i)
+  const sorted = Array.from(range).sort((a, b) => a - b)
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) pages.push('ellipsis')
+    pages.push(sorted[i])
+  }
+
+  return (
+    <div className="flex items-center justify-between px-5 py-2.5 border-t border-border bg-bg-surface flex-shrink-0">
+      <span className="text-2xs text-text-muted font-mono">
+        {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onPageChange(page - 1)}
+          disabled={page === 1}
+          className="w-7 h-7 flex items-center justify-center rounded border border-border text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronLeft size={13} />
+        </button>
+        {pages.map((p, i) =>
+          p === 'ellipsis' ? (
+            <span key={`e${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-text-muted">…</span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onPageChange(p)}
+              className={[
+                'w-7 h-7 flex items-center justify-center rounded text-xs transition-colors',
+                p === page
+                  ? 'bg-accent/10 text-accent border border-accent/20 font-medium'
+                  : 'border border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated',
+              ].join(' ')}
+            >
+              {p}
+            </button>
+          )
+        )}
+        <button
+          onClick={() => onPageChange(page + 1)}
+          disabled={page === totalPages}
+          className="w-7 h-7 flex items-center justify-center rounded border border-border text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <ChevronRight size={13} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function SearchPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -199,6 +257,10 @@ export function SearchPage() {
     filters,
     updateFilter,
     clearFilters,
+    page,
+    setPage,
+    totalPages,
+    pageSize,
     selectedIndex,
     setSelectedIndex,
     navigateResults,
@@ -206,6 +268,7 @@ export function SearchPage() {
     results,
     total,
     isLoading,
+    isFetching,
     isError,
     hasQuery,
   } = useSearch({ orgSlug: orgSlug! })
@@ -361,7 +424,7 @@ export function SearchPage() {
 
         {/* Results list */}
         {!isLoading && !isError && results.length > 0 && (
-          <div>
+          <div className={isFetching ? 'opacity-60 transition-opacity' : ''}>
             {results.map((result, idx) => (
               <SearchResultItem
                 key={result.id}
@@ -375,20 +438,31 @@ export function SearchPage() {
         </div>
       </div>
 
-      {/* Keyboard hints at bottom */}
+      {/* Pagination + keyboard hints */}
       {hasQuery && results.length > 0 && (
-        <div className="border-t border-border px-5 py-2 flex items-center gap-4 bg-bg-surface flex-shrink-0">
-          <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
-            <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">↑↓</kbd>
-            <span>navigate</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
-            <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">↵</kbd>
-            <span>open</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
-            <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">Esc</kbd>
-            <span>dismiss</span>
+        <div className="border-t border-border bg-bg-surface flex-shrink-0">
+          {total > pageSize && (
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={pageSize}
+              onPageChange={(p) => { setPage(p); setSelectedIndex(-1) }}
+            />
+          )}
+          <div className="px-5 py-2 flex items-center gap-4 border-t border-border/50">
+            <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
+              <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">↑↓</kbd>
+              <span>navigate</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
+              <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">↵</kbd>
+              <span>open</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
+              <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">Esc</kbd>
+              <span>dismiss</span>
+            </div>
           </div>
         </div>
       )}

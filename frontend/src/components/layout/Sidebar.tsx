@@ -4,15 +4,19 @@ import {
   Search,
   Plug,
   Settings,
+  Files,
   ChevronDown,
   Plus,
   LogOut,
   User,
   Building2,
   Check,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../hooks/useAuth'
+import { useTheme } from '../../hooks/useTheme'
 import { orgsService } from '../../services/orgs'
 import type { Organization } from '../../types'
 
@@ -22,6 +26,7 @@ interface SidebarProps {
 
 export function Sidebar({ orgSlug }: SidebarProps) {
   const { user, currentOrg, logout, setCurrentOrg } = useAuth()
+  const { theme, toggle: toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [orgMenuOpen, setOrgMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -34,6 +39,7 @@ export function Sidebar({ orgSlug }: SidebarProps) {
 
   const navLinks = [
     { to: `/${orgSlug}/search`, icon: Search, label: 'Search' },
+    { to: `/${orgSlug}/files`, icon: Files, label: 'Files' },
     { to: `/${orgSlug}/connectors`, icon: Plug, label: 'Connectors' },
     { to: `/${orgSlug}/settings`, icon: Settings, label: 'Settings' },
   ]
@@ -145,6 +151,17 @@ export function Sidebar({ orgSlug }: SidebarProps) {
           ))}
         </div>
       </nav>
+
+      {/* Theme toggle */}
+      <div className="px-2 pb-2">
+        <button
+          onClick={toggleTheme}
+          className="w-full flex items-center gap-2.5 px-2.5 h-8 rounded text-sm text-text-muted hover:text-text-primary hover:bg-bg-elevated border border-transparent transition-colors"
+        >
+          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+        </button>
+      </div>
 
       {/* User Menu */}
       <div className="relative border-t border-border">

@@ -93,6 +93,15 @@ async function fuzzySearch(client: PoolClient, options: SearchOptions): Promise<
 }
 
 export async function fullTextSearch(client: PoolClient, options: SearchOptions): Promise<SearchResponse> {
+  // Stop words produce an empty tsquery — detect early to skip the expensive fuzzy fallback
+  const tsqCheck = await client.query<{ is_empty: boolean }>(
+    `SELECT (websearch_to_tsquery('english', $1)::text = '') AS is_empty`,
+    [options.query]
+  );
+  if (tsqCheck.rows[0]?.is_empty) {
+    return { query: options.query, total: 0, results: [], limit: options.limit ?? 20, offset: options.offset ?? 0 };
+  }
+
   const ftsResult = await ftSearch(client, options);
   if (ftsResult !== null) return ftsResult;
   return fuzzySearch(client, options);

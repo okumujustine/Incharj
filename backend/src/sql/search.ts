@@ -9,8 +9,8 @@ export function buildFtsQuery(whereClause: string, limitParam: number, offsetPar
         c.kind AS connector_kind, c.name AS connector_name,
         dc_best.content AS best_chunk_content,
         (
-          setweight(coalesce(d.search_vector, to_tsvector('english', coalesce(left(d.title, 10000), ''))), 'A') ||
-          setweight(coalesce(dc_best.search_vector, to_tsvector('english', coalesce(left(dc_best.content, 50000), ''))), 'B')
+          setweight(coalesce(d.search_vector, ''::tsvector), 'A') ||
+          setweight(coalesce(dc_best.search_vector, ''::tsvector), 'B')
         ) AS sv
       FROM documents d
       JOIN connectors c ON c.id = d.connector_id
@@ -18,13 +18,15 @@ export function buildFtsQuery(whereClause: string, limitParam: number, offsetPar
         SELECT dc.content, dc.search_vector
         FROM document_chunks dc
         WHERE dc.document_id = d.id
-        ORDER BY ts_rank_cd(
-          coalesce(dc.search_vector, to_tsvector('english', left(dc.content, 50000))),
-          (SELECT q FROM tsq)
-        ) DESC
+          AND dc.search_vector @@ (SELECT q FROM tsq)
+        ORDER BY ts_rank_cd(dc.search_vector, (SELECT q FROM tsq)) DESC
         LIMIT 1
       ) dc_best ON true
       WHERE ${whereClause}
+        AND (
+          d.search_vector @@ (SELECT q FROM tsq)
+          OR dc_best.content IS NOT NULL
+        )
     ),
     ranked AS (
       SELECT
@@ -33,16 +35,15 @@ export function buildFtsQuery(whereClause: string, limitParam: number, offsetPar
           exp(-extract(epoch FROM (now() - coalesce(cand.mtime, cand.indexed_at))) / (90.0 * 86400))
           AS raw_score
       FROM candidates cand, tsq
-      WHERE tsq.q @@ cand.sv
     )
     SELECT
       id, title, url, kind, ext, mtime, connector_kind, connector_name,
       raw_score AS score,
       ts_headline(
         'english',
-        left(coalesce(best_chunk_content, title, ''), 50000),
+        left(coalesce(best_chunk_content, title, ''), 5000),
         (SELECT q FROM tsq),
-        'MaxFragments=2, MaxWords=40, MinWords=10, StartSel=<mark>, StopSel=</mark>'
+        'MaxFragments=2, MaxWords=40, MinWords=10, StartSel=<<, StopSel=>>'
       ) AS snippet
     FROM ranked
     ORDER BY raw_score DESC
@@ -59,11 +60,11 @@ export function buildFtsCountQuery(whereClause: string): string {
     CROSS JOIN tsq
     WHERE ${whereClause}
       AND (
-        tsq.q @@ coalesce(d.search_vector, to_tsvector('english', coalesce(d.title, '')))
+        d.search_vector @@ tsq.q
         OR EXISTS (
           SELECT 1 FROM document_chunks dc
           WHERE dc.document_id = d.id
-            AND tsq.q @@ coalesce(dc.search_vector, to_tsvector('english', left(dc.content, 10000)))
+            AND dc.search_vector @@ tsq.q
         )
       );
   `;
@@ -75,35 +76,17 @@ export function buildFuzzyQuery(whereClause: string, limitParam: number, offsetP
       SELECT
         d.id, d.title, d.url, d.kind, d.ext, d.mtime, d.indexed_at,
         c.kind AS connector_kind, c.name AS connector_name,
-        GREATEST(
-          similarity(coalesce(d.title, ''), $2),
-          coalesce((
-            SELECT max(similarity(dc.content, $2))
-            FROM document_chunks dc
-            WHERE dc.document_id = d.id
-          ), 0)
-        ) AS raw_score,
-        (
-          SELECT dc.content FROM document_chunks dc
-          WHERE dc.document_id = d.id
-          ORDER BY similarity(dc.content, $2) DESC
-          LIMIT 1
-        ) AS best_chunk_content
+        similarity(coalesce(d.title, ''), $2) AS raw_score,
+        d.title AS best_chunk_content
       FROM documents d
       JOIN connectors c ON c.id = d.connector_id
       WHERE ${whereClause}
-        AND (
-          similarity(coalesce(d.title, ''), $2) > 0.1
-          OR EXISTS (
-            SELECT 1 FROM document_chunks dc
-            WHERE dc.document_id = d.id AND similarity(dc.content, $2) > 0.1
-          )
-        )
+        AND similarity(coalesce(d.title, ''), $2) > 0.1
     )
     SELECT
       id, title, url, kind, ext, mtime, connector_kind, connector_name,
       raw_score AS score,
-      coalesce(best_chunk_content, title, '') AS snippet
+      coalesce(best_chunk_content, '') AS snippet
     FROM ranked
     ORDER BY raw_score DESC
     LIMIT $${limitParam} OFFSET $${offsetParam};
@@ -116,12 +99,6 @@ export function buildFuzzyCountQuery(whereClause: string): string {
     FROM documents d
     JOIN connectors c ON c.id = d.connector_id
     WHERE ${whereClause}
-      AND (
-        similarity(coalesce(d.title, ''), $2) > 0.1
-        OR EXISTS (
-          SELECT 1 FROM document_chunks dc
-          WHERE dc.document_id = d.id AND similarity(dc.content, $2) > 0.1
-        )
-      );
+      AND similarity(coalesce(d.title, ''), $2) > 0.1;
   `;
 }

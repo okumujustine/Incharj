@@ -8,19 +8,25 @@ interface ListDocumentsParams {
   offset?: number
 }
 
+export interface DocumentsPage {
+  total: number
+  limit: number
+  offset: number
+  results: Document[]
+}
+
 export const documentsService = {
-  async list(orgSlug: string, params: ListDocumentsParams = {}): Promise<Document[]> {
-    const response = await apiClient.get<Document[]>(
-      `/orgs/${orgSlug}/documents`,
-      { params }
-    )
+  async list(orgSlug: string, params: ListDocumentsParams = {}): Promise<DocumentsPage> {
+    const response = await apiClient.get<DocumentsPage>('/documents', {
+      params: { org: orgSlug, ...params },
+    })
     return response.data
   },
 
   async get(orgSlug: string, documentId: string): Promise<Document> {
-    const response = await apiClient.get<Document>(
-      `/orgs/${orgSlug}/documents/${documentId}`
-    )
+    const response = await apiClient.get<Document>(`/documents/${documentId}`, {
+      params: { org: orgSlug },
+    })
     return response.data
   },
 }

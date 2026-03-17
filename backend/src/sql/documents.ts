@@ -13,6 +13,14 @@ export function buildListDocumentsSql(filters: string[], limitParam: number, off
   `;
 }
 
+export function buildCountDocumentsSql(filters: string[]): string {
+  return `
+    SELECT count(*)::int AS total
+    FROM documents
+    WHERE ${filters.join(" AND ")}
+  `;
+}
+
 export const SQL_SELECT_DOCUMENT_BY_ID = `
   SELECT ${DOCUMENT_FIELDS}
   FROM documents

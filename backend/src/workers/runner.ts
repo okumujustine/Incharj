@@ -14,6 +14,11 @@ export async function runSync(connectorModel: ConnectorModel): Promise<RunResult
     ? decryptCredentials(connectorModel.credentials)
     : {};
 
+  // pg returns timestamp columns as Date objects — convert to ISO string for the connector
+  const lastSyncedAt = connectorModel.last_synced_at
+    ? new Date(connectorModel.last_synced_at as unknown as Date).toISOString()
+    : undefined;
+
   const connector = getConnector({
     kind: connectorModel.kind,
     connectorId: connectorModel.id,
@@ -21,7 +26,7 @@ export async function runSync(connectorModel: ConnectorModel): Promise<RunResult
     credentials,
     config: {
       ...connectorModel.config,
-      last_synced_at: connectorModel.last_synced_at ?? undefined,
+      last_synced_at: lastSyncedAt,
     },
   });
 

@@ -9,7 +9,7 @@ interface CreateConnectorPayload {
 
 interface UpdateConnectorPayload {
   name?: string
-  status?: 'paused' | 'idle'
+  config?: Record<string, unknown>
 }
 
 export const connectorsService = {

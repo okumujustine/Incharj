@@ -121,6 +121,7 @@ export const DDL_INITIALIZE = `
     CREATE INDEX IF NOT EXISTS ix_documents_org_id ON documents(org_id);
     CREATE INDEX IF NOT EXISTS ix_documents_connector_id ON documents(connector_id);
     CREATE INDEX IF NOT EXISTS ix_documents_title_trgm ON documents USING GIN (title gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS ix_documents_search_vector ON documents USING GIN (search_vector);
 
     CREATE TABLE IF NOT EXISTS document_chunks (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -136,6 +137,7 @@ export const DDL_INITIALIZE = `
     CREATE INDEX IF NOT EXISTS ix_document_chunks_document_id ON document_chunks(document_id);
     CREATE INDEX IF NOT EXISTS ix_document_chunks_org_id ON document_chunks(org_id);
     CREATE INDEX IF NOT EXISTS ix_chunks_content_trgm ON document_chunks USING GIN (content gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS ix_chunks_search_vector ON document_chunks USING GIN (search_vector);
 
     CREATE TABLE IF NOT EXISTS entities (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

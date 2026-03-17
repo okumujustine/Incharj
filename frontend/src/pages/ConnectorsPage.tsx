@@ -3,9 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plug,
-  HardDrive,
-  FileText,
-  MessageSquare,
   RefreshCw,
   Pause,
   Play,
@@ -18,6 +15,7 @@ import { connectorsService } from '../services/connectors'
 import { TopBar } from '../components/layout/TopBar'
 import { Button } from '../components/ui/Button'
 import { StatusBadge } from '../components/ui/Badge'
+import { ConnectorIcon } from '../components/ui/ConnectorIcon'
 import { SkeletonCard } from '../components/ui/SkeletonList'
 import type { Connector } from '../types'
 
@@ -26,28 +24,16 @@ const CONNECTOR_CATALOG = [
     kind: 'google_drive' as const,
     label: 'Google Drive',
     description: 'Index documents, spreadsheets, and presentations from your Drive.',
-    icon: HardDrive,
-    color: 'text-accent',
-    bgColor: 'bg-accent/10',
-    borderColor: 'border-accent/20',
   },
   {
     kind: 'notion' as const,
     label: 'Notion',
     description: 'Index pages, databases, and wikis from your workspace.',
-    icon: FileText,
-    color: 'text-warning',
-    bgColor: 'bg-warning/10',
-    borderColor: 'border-warning/20',
   },
   {
     kind: 'slack' as const,
     label: 'Slack',
     description: 'Index messages and threads from your channels.',
-    icon: MessageSquare,
-    color: 'text-success',
-    bgColor: 'bg-success/10',
-    borderColor: 'border-success/20',
   },
 ]
 
@@ -77,7 +63,6 @@ function ConnectorTile({
   onDelete,
 }: ConnectorTileProps) {
   const navigate = useNavigate()
-  const Icon = catalog.icon
   const connected = !!connector && connector.has_credentials
 
   const lastSynced = connector?.last_synced_at
@@ -93,12 +78,8 @@ function ConnectorTile({
     >
       {/* Header */}
       <div className="flex items-start gap-4 p-5">
-        <div className={[
-          'w-10 h-10 rounded border flex items-center justify-center flex-shrink-0',
-          catalog.bgColor,
-          catalog.borderColor,
-        ].join(' ')}>
-          <Icon size={20} className={catalog.color} />
+        <div className="w-10 h-10 rounded border border-border bg-bg-elevated flex items-center justify-center flex-shrink-0">
+          <ConnectorIcon kind={catalog.kind} size={22} />
         </div>
 
         <div className="flex-1 min-w-0">

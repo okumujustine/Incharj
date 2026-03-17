@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { query } from "../db";
 import { NotFoundError } from "../errors";
 import { getCurrentMembership, getCurrentUser, requireCurrentUser } from "../middleware/auth";
-import { SQL_DELETE_DOCUMENT, SQL_SELECT_DOCUMENT_BY_ID, SQL_SELECT_DOCUMENT_CHUNKS, buildListDocumentsSql } from "../sql/documents";
+import { SQL_DELETE_DOCUMENT, SQL_SELECT_DOCUMENT_BY_ID, SQL_SELECT_DOCUMENT_CHUNKS, buildListDocumentsSql, buildCountDocumentsSql } from "../sql/documents";
 import { getOrgBySlug } from "../sql/orgs";
 import { mapDocument } from "../utils/serialization";
 
@@ -26,9 +26,20 @@ export default async function documentRoutes(api: FastifyInstance) {
       values.push(queryParams.ext);
       filters.push(`ext = $${values.length}`);
     }
-    values.push(Number(queryParams.limit ?? 50), Number(queryParams.offset ?? 0));
-    const result = await query(buildListDocumentsSql(filters, values.length - 1, values.length), values);
-    return result.rows.map((row) => mapDocument(row));
+    const limit = Number(queryParams.limit ?? 50);
+    const offset = Number(queryParams.offset ?? 0);
+    const countValues = [...values];
+    values.push(limit, offset);
+    const [result, countResult] = await Promise.all([
+      query(buildListDocumentsSql(filters, values.length - 1, values.length), values),
+      query<{ total: number }>(buildCountDocumentsSql(filters), countValues),
+    ]);
+    return {
+      total: countResult.rows[0]?.total ?? 0,
+      limit,
+      offset,
+      results: result.rows.map((row) => mapDocument(row)),
+    };
   });
 
   api.get("/documents/:documentId", { preHandler: requireCurrentUser }, async (request) => {

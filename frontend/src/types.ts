@@ -32,6 +32,7 @@ export interface Connector {
   last_synced_at: string | null
   doc_count: number
   has_credentials: boolean
+  config: Record<string, unknown> | null
   created_at: string
 }
 

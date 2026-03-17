@@ -1,15 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw,
   Pause,
   Play,
-  Trash2,
-  HardDrive,
-  FileText,
-  MessageSquare,
-  Plug,
   CheckCircle,
   XCircle,
   AlertTriangle,
@@ -20,6 +15,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { connectorsService } from '../services/connectors'
+import { ConnectorIcon } from '../components/ui/ConnectorIcon'
 import { TopBar } from '../components/layout/TopBar'
 import { Button } from '../components/ui/Button'
 import { StatusBadge, Badge } from '../components/ui/Badge'
@@ -27,11 +23,7 @@ import { PageSpinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import type { SyncJob } from '../types'
 
-const CONNECTOR_ICONS: Record<string, React.ElementType> = {
-  google_drive: HardDrive,
-  notion: FileText,
-  slack: MessageSquare,
-}
+
 
 function formatDuration(startedAt: string | null, finishedAt: string | null): string {
   if (!startedAt || !finishedAt) return '—'
@@ -187,6 +179,61 @@ function SyncJobRow({ job }: { job: SyncJob }) {
   )
 }
 
+
+function SyncLimitCard({
+  currentLimit,
+  onSave,
+  isSaving,
+}: {
+  currentLimit: number | null
+  onSave: (limit: number | null) => void
+  isSaving: boolean
+}) {
+  const [value, setValue] = useState(currentLimit?.toString() ?? '')
+
+  useEffect(() => {
+    setValue(currentLimit?.toString() ?? '')
+  }, [currentLimit])
+
+  const parsed = value.trim() === '' ? null : parseInt(value, 10)
+  const isValid = value.trim() === '' || (!isNaN(parsed!) && parsed! > 0)
+  const isDirty = (parsed ?? null) !== (currentLimit ?? null)
+
+  return (
+    <div className="bg-bg-surface border border-border rounded">
+      <div className="px-5 py-3 border-b border-border">
+        <h2 className="text-sm font-semibold text-text-primary">Sync limit</h2>
+        <p className="text-xs text-text-muted mt-0.5">
+          Cap how many documents are fetched per sync. Leave empty for no limit.
+        </p>
+      </div>
+      <div className="p-5 flex items-center gap-3">
+        <input
+          type="number"
+          min={1}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="No limit"
+          className="w-36 h-8 bg-bg-elevated text-text-primary text-sm border border-border rounded px-3 focus:outline-none focus:border-accent placeholder:text-text-muted"
+        />
+        <span className="text-xs text-text-muted">documents per sync</span>
+        {isDirty && isValid && (
+          <Button
+            size="sm"
+            onClick={() => onSave(parsed)}
+            isLoading={isSaving}
+          >
+            Save
+          </Button>
+        )}
+        {!isValid && (
+          <span className="text-xs text-error">Must be a positive number</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function ConnectorDetailPage() {
   const { orgSlug, id } = useParams<{ orgSlug: string; id: string }>()
   const navigate = useNavigate()
@@ -226,13 +273,13 @@ export function ConnectorDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] }),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: () => connectorsService.delete(orgSlug!, id!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connectors', orgSlug] })
-      navigate(`/${orgSlug}/connectors`)
-    },
+  const updateMutation = useMutation({
+    mutationFn: (config: Record<string, unknown>) =>
+      connectorsService.update(orgSlug!, id!, { config }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] }),
   })
+
 
   if (connectorQuery.isLoading) return <PageSpinner />
 
@@ -242,7 +289,6 @@ export function ConnectorDetailPage() {
     return null
   }
 
-  const Icon = CONNECTOR_ICONS[connector.kind] ?? Plug
   const lastSynced = connector.last_synced_at
     ? formatDistanceToNow(new Date(connector.last_synced_at), { addSuffix: true })
     : 'Never'
@@ -300,7 +346,7 @@ export function ConnectorDetailPage() {
           <div className="bg-bg-surface border border-border rounded">
             <div className="flex items-center gap-4 p-5 border-b border-border">
               <div className="w-12 h-12 bg-bg-elevated border border-border rounded flex items-center justify-center flex-shrink-0">
-                <Icon size={22} className="text-accent" />
+                <ConnectorIcon kind={connector.kind} size={22} />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-3">
@@ -341,6 +387,18 @@ export function ConnectorDetailPage() {
             </div>
           </div>
 
+          <SyncLimitCard
+            currentLimit={
+              typeof connector.config?.max_documents === 'number'
+                ? connector.config.max_documents
+                : null
+            }
+            onSave={(max) =>
+              updateMutation.mutate({ ...connector.config, max_documents: max })
+            }
+            isSaving={updateMutation.isPending}
+          />
+
           {/* Sync History */}
           <div className="bg-bg-surface border border-border rounded">
             <div className="px-5 py-3 border-b border-border">
@@ -364,33 +422,6 @@ export function ConnectorDetailPage() {
             )}
           </div>
 
-          {/* Danger Zone */}
-          <div className="bg-bg-surface border border-error/20 rounded">
-            <div className="px-5 py-3 border-b border-error/20">
-              <h2 className="text-sm font-semibold text-error">Danger zone</h2>
-            </div>
-            <div className="p-5 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-text-primary">Remove connector</p>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Permanently delete this connector and all indexed documents. This cannot be undone.
-                </p>
-              </div>
-              <Button
-                variant="danger"
-                size="sm"
-                isLoading={deleteMutation.isPending}
-                leftIcon={<Trash2 size={12} />}
-                onClick={() => {
-                  if (confirm(`Remove "${connector.name}"? This cannot be undone.`)) {
-                    deleteMutation.mutate()
-                  }
-                }}
-              >
-                Remove
-              </Button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

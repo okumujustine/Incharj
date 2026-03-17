@@ -8,6 +8,7 @@ import { OAuthCallbackPage } from './pages/OAuthCallbackPage'
 import { OrgSelectorPage } from './pages/OrgSelectorPage'
 import { CreateOrgPage } from './pages/CreateOrgPage'
 import { SearchPage } from './pages/SearchPage'
+import { FilesPage } from './pages/FilesPage'
 import { ConnectorsPage } from './pages/ConnectorsPage'
 import { ConnectorDetailPage } from './pages/ConnectorDetailPage'
 import {
@@ -84,6 +85,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="search" replace />} />
         <Route path="search" element={<SearchPage />} />
+        <Route path="files" element={<FilesPage />} />
         <Route path="connectors" element={<ConnectorsPage />} />
         <Route path="connectors/:id" element={<ConnectorDetailPage />} />
         <Route path="settings" element={<SettingsLayout />}>

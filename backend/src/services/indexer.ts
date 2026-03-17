@@ -17,13 +17,13 @@ export async function ingestDocument(
   connectorId: string
 ): Promise<"indexed" | "skipped"> {
   const content = (docData.content?.trim() ?? "").replace(/\0/g, "").slice(0, 500_000);
-  const contentHash = content ? sha256(content) : null;
+  const contentHash = sha256(`${docData.title ?? ""}::${content}`);
 
   const existingResult = await client.query<{ content_hash: string | null }>(
     SQL_SELECT_DOCUMENT_HASH, [connectorId, docData.external_id]
   );
   const existing = existingResult.rows[0];
-  if (existing?.content_hash && existing.content_hash === contentHash) return "skipped";
+  if (existing?.content_hash === contentHash) return "skipped";
 
   const wordCount = content ? content.split(/\s+/).filter(Boolean).length : 0;
   const upsertResult = await client.query<{ id: string }>(SQL_UPSERT_DOCUMENT, [

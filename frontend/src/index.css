@@ -7,9 +7,53 @@
     box-sizing: border-box;
   }
 
+  /* ── Dark theme (default) ── */
+  :root {
+    --color-bg-primary:    10 10 10;
+    --color-bg-surface:    17 17 17;
+    --color-bg-elevated:   26 26 26;
+    --color-bg-overlay:    34 34 34;
+    --color-border:        42 42 42;
+    --color-border-subtle: 31 31 31;
+    --color-border-strong: 58 58 58;
+    --color-text-primary:  240 240 240;
+    --color-text-secondary:160 160 160;
+    --color-text-muted:    102 102 102;
+    --color-text-disabled: 68 68 68;
+    --color-accent:        79 156 249;
+    --color-accent-hover:  107 173 251;
+    --color-success:       34 197 94;
+    --color-warning:       245 158 11;
+    --color-error:         239 68 68;
+    --scrollbar-thumb:     #2a2a2a;
+    --scrollbar-track:     #0a0a0a;
+  }
+
+  /* ── Light theme ── */
+  .light {
+    --color-bg-primary:    248 248 248;
+    --color-bg-surface:    255 255 255;
+    --color-bg-elevated:   242 242 242;
+    --color-bg-overlay:    228 228 228;
+    --color-border:        220 220 220;
+    --color-border-subtle: 235 235 235;
+    --color-border-strong: 196 196 196;
+    --color-text-primary:  17 17 17;
+    --color-text-secondary:80 80 80;
+    --color-text-muted:    148 148 148;
+    --color-text-disabled: 196 196 196;
+    --color-accent:        37 99 235;
+    --color-accent-hover:  29 78 216;
+    --color-success:       22 163 74;
+    --color-warning:       217 119 6;
+    --color-error:         220 38 38;
+    --scrollbar-thumb:     #d0d0d0;
+    --scrollbar-track:     #f8f8f8;
+  }
+
   html {
-    background-color: #0a0a0a;
-    color: #f0f0f0;
+    background-color: rgb(var(--color-bg-primary));
+    color: rgb(var(--color-text-primary));
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -18,22 +62,22 @@
   body {
     margin: 0;
     padding: 0;
-    background-color: #0a0a0a;
+    background-color: rgb(var(--color-bg-primary));
     min-height: 100vh;
   }
 
   ::selection {
-    background-color: #4f9cf940;
-    color: #f0f0f0;
+    background-color: rgb(var(--color-accent) / 0.25);
+    color: rgb(var(--color-text-primary));
   }
 
   :focus-visible {
-    outline: 1px solid #4f9cf9;
+    outline: 1px solid rgb(var(--color-accent));
     outline-offset: 2px;
   }
 
   scrollbar-width: thin;
-  scrollbar-color: #2a2a2a #0a0a0a;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 @layer components {
@@ -42,14 +86,15 @@
     height: 4px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
-    background: #0a0a0a;
+    background: var(--scrollbar-track);
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: #2a2a2a;
+    background: var(--scrollbar-thumb);
     border-radius: 2px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: #3a3a3a;
+    background: var(--scrollbar-thumb);
+    filter: brightness(1.2);
   }
 }
 

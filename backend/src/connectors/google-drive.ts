@@ -1,3 +1,6 @@
+// pdf-parse is a CJS module with broken ESM type declarations
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse") as (buffer: Buffer) => Promise<{ text: string }>;
 import { config } from "../config";
 import { BaseConnector, type ConnectorDocument } from "./base";
 import { registerConnector } from "./registry";
@@ -13,19 +16,21 @@ const GOOGLE_DRIVE_EXPORT_URL =
 const GOOGLE_DRIVE_DOWNLOAD_URL =
   "https://www.googleapis.com/drive/v3/files/{file_id}?alt=media";
 
-const SUPPORTED_MIME_TYPES = [
-  "application/vnd.google-apps.document",
-  "application/vnd.google-apps.spreadsheet",
-  "application/vnd.google-apps.presentation",
-  "application/pdf",
-  "text/plain",
-  "text/markdown"
+export const GOOGLE_DRIVE_FILE_TYPES = [
+  { id: "google_docs",    label: "Google Docs",    mimeType: "application/vnd.google-apps.document",     ext: "gdoc"    },
+  { id: "google_sheets",  label: "Google Sheets",  mimeType: "application/vnd.google-apps.spreadsheet",  ext: "gsheet"  },
+  { id: "google_slides",  label: "Google Slides",  mimeType: "application/vnd.google-apps.presentation", ext: "gslides" },
+  { id: "pdf",            label: "PDF",            mimeType: "application/pdf",                          ext: "pdf"     },
+  { id: "plain_text",     label: "Plain Text",     mimeType: "text/plain",                               ext: "txt"     },
+  { id: "markdown",       label: "Markdown",       mimeType: "text/markdown",                            ext: "md"      },
+  { id: "html",           label: "HTML",           mimeType: "text/html",                                ext: "html"    },
+  { id: "csv",            label: "CSV",            mimeType: "text/csv",                                 ext: "csv"     },
 ] as const;
 
 const EXPORT_MIME_TYPES: Record<string, string> = {
-  "application/vnd.google-apps.document": "text/plain",
-  "application/vnd.google-apps.spreadsheet": "text/csv",
-  "application/vnd.google-apps.presentation": "text/plain"
+  "application/vnd.google-apps.document":     "text/plain",
+  "application/vnd.google-apps.spreadsheet":  "text/csv",
+  "application/vnd.google-apps.presentation": "text/plain",
 };
 
 @registerConnector("google_drive")
@@ -88,9 +93,21 @@ export class GoogleDriveConnector extends BaseConnector {
   async *listDocuments(cursor?: string | null): AsyncGenerator<ConnectorDocument> {
     const accessToken = String(this.credentials.access_token ?? "");
     let pageToken = cursor ?? undefined;
-    const mimeQuery = SUPPORTED_MIME_TYPES.map(
-      (mimeType) => `mimeType='${mimeType}'`
-    ).join(" or ");
+
+    // Respect file_types config — default to all supported types
+    const enabledIds = Array.isArray(this.config.file_types)
+      ? (this.config.file_types as string[])
+      : GOOGLE_DRIVE_FILE_TYPES.map((t) => t.id);
+    const activeMimeTypes = GOOGLE_DRIVE_FILE_TYPES
+      .filter((t) => enabledIds.includes(t.id))
+      .map((t) => t.mimeType);
+
+    const maxDocuments = typeof this.config.max_documents === "number" && this.config.max_documents > 0
+      ? this.config.max_documents
+      : Infinity;
+
+    const mimeQuery = activeMimeTypes.map((m) => `mimeType='${m}'`).join(" or ");
+    let yielded = 0;
     let query = `(${mimeQuery}) and trashed=false`;
     const lastSyncedAt =
       typeof this.config.last_synced_at === "string"
@@ -156,6 +173,12 @@ export class GoogleDriveConnector extends BaseConnector {
             size: file.size ?? null
           }
         };
+
+        yielded++;
+        if (yielded >= maxDocuments) {
+          log.info({ maxDocuments }, "reached max_documents limit, stopping");
+          return;
+        }
       }
 
       pageToken = data.nextPageToken;
@@ -203,21 +226,40 @@ export class GoogleDriveConnector extends BaseConnector {
     const reader = response.body?.getReader();
     if (!reader) return null;
 
-    const decoder = new TextDecoder("utf-8", { fatal: false });
-    let result = "";
+    const chunks: Uint8Array[] = [];
     let totalBytes = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       totalBytes += value.length;
-      result += decoder.decode(value, { stream: true });
+      chunks.push(value);
       if (totalBytes >= MAX_CONTENT_BYTES) {
         await reader.cancel();
         break;
       }
     }
-    result += decoder.decode();
 
-    return result.trim() ? result : null;
+    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+
+    // PDFs are binary — parse with pdf-parse to extract plain text
+    if (mimeType === "application/pdf") {
+      try {
+        const parsed = await pdfParse(buffer);
+        return parsed.text.trim() || null;
+      } catch (err) {
+        log.warn({ externalId, err }, "pdf-parse failed, skipping content");
+        return null;
+      }
+    }
+
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+    if (!text.trim()) return null;
+
+    // Strip HTML tags for html files
+    if (mimeType === "text/html") {
+      return text.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim() || null;
+    }
+
+    return text;
   }
 }
