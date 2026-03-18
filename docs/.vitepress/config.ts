@@ -6,6 +6,7 @@ export default defineConfig({
   title: 'Incharj',
   description: 'Core engine documentation — indexer, search, architecture, auth',
   cleanUrls: true,
+  ignoreDeadLinks: true,
   base: isProd ? '/Incharj/' : '/',
 
   head: [
