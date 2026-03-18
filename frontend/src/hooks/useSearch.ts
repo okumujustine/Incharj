@@ -40,7 +40,7 @@ export function useSearch({ orgSlug, debounceMs = 300 }: UseSearchOptions) {
       }),
     enabled: !!orgSlug && debouncedQuery.trim().length > 0,
     staleTime: 30 * 1000,
-    placeholderData: (prev) => prev,
+    placeholderData: (prev) => (query.trim().length > 0 ? prev : undefined),
   })
 
   const navigateResults = useCallback(
@@ -100,6 +100,6 @@ export function useSearch({ orgSlug, debounceMs = 300 }: UseSearchOptions) {
     isLoading: searchQuery.isLoading,
     isFetching: searchQuery.isFetching,
     isError: searchQuery.isError,
-    hasQuery: debouncedQuery.trim().length > 0,
+    hasQuery: query.trim().length > 0,
   }
 }
