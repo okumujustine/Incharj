@@ -84,6 +84,12 @@ services:
     depends_on:
       - api
 
+  docs:
+    build:
+      context: ./docs
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -96,6 +102,7 @@ services:
     depends_on:
       - api
       - web
+      - docs
 
 volumes:
   postgres_data:

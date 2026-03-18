@@ -1,9 +1,12 @@
 import { defineConfig } from 'vitepress'
 
+const isProd = process.env.NODE_ENV === 'production'
+
 export default defineConfig({
   title: 'Incharj',
   description: 'Multi-tenant document intelligence platform — developer documentation',
   cleanUrls: true,
+  base: isProd ? '/docs/' : '/',
 
   head: [
     ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
