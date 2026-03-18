@@ -87,11 +87,13 @@ Unique constraint: `(org_id, email)` — one pending invite per email per org.
 | `status` | VARCHAR(50) | `idle`, `running`, `error`, `paused` |
 | `credentials` | TEXT | AES-GCM encrypted JSON |
 | `config` | JSONB | Connector-specific settings |
+| `has_credentials` | BOOLEAN | True once OAuth tokens have been stored |
 | `sync_cursor` | TEXT | Pagination cursor (connector-specific) |
-| `last_synced_at` | TIMESTAMPTZ | Used for incremental sync filter |
+| `last_synced_at` | TIMESTAMPTZ | Used for incremental sync filter (passed to connector as ISO string) |
 | `last_error` | TEXT | Last error message |
 | `sync_frequency` | VARCHAR(50) | PostgreSQL interval string, e.g. `'1 hour'` |
 | `doc_count` | INTEGER | Total indexed documents (updated after each sync) |
+| `config` | JSONB | Connector-specific settings, e.g. `{ "max_documents": 500 }` to cap docs per sync |
 
 ### `sync_jobs`
 
@@ -163,7 +165,8 @@ Unique constraint: `(connector_id, external_id)` — upsert key.
 | `ix_documents_org_id` | documents | org_id | btree |
 | `ix_documents_connector_id` | documents | connector_id | btree |
 | `ix_documents_title_trgm` | documents | title | GIN (gin_trgm_ops) |
-| `ix_chunks_content_trgm` | document_chunks | content | GIN (gin_trgm_ops) |
+| `ix_documents_search_vector` | documents | search_vector | GIN — fast FTS on documents |
+| `ix_chunks_search_vector` | document_chunks | search_vector | GIN — fast FTS on chunks |
 | `ix_document_chunks_document_id` | document_chunks | document_id | btree |
 | `ix_document_chunks_org_id` | document_chunks | org_id | btree |
 

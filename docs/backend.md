@@ -60,10 +60,10 @@ backend/src/
 │   └── slack.ts
 │
 ├── workers/
-│   ├── index.ts            # tick() + main() poll loop
-│   ├── scheduler.ts        # dispatchDueSyncs()
-│   ├── processor.ts        # processOnePendingJob()
-│   └── runner.ts           # runSync(connectorModel)
+│   ├── index.ts            # BullMQ Worker setup + job routing + startup
+│   ├── scheduler.ts        # dispatchDueSyncs() — finds due connectors, enqueues to BullMQ
+│   ├── processor.ts        # processJob() — marks job running/done/failed in DB
+│   └── runner.ts           # runSync(connectorModel) — drives the actual sync
 │
 ├── types/
 │   ├── db.ts               # DbUser, DbMembership, DbClient

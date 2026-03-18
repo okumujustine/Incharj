@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Incharj — Architecture Diagram</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    min-height: 100vh;
+    padding: 40px 24px;
+  }
+
+  h1 {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: #f0f6fc;
+    margin-bottom: 6px;
+    letter-spacing: -0.3px;
+  }
+
+  .subtitle {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #7d8590;
+    font-size: 13px;
+    margin-bottom: 36px;
+  }
+
+  /* ─── LAYOUT ───────────────────────────────────────────────── */
+  .diagram {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-rows: auto auto auto auto auto;
+    gap: 16px;
+    max-width: 1300px;
+    margin: 0 auto;
+  }
+
+  /* ─── CARDS ─────────────────────────────────────────────────── */
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+  }
+
+  .card.accent-blue   { border-color: #1f6feb; box-shadow: 0 0 0 1px #1f6feb22 inset; }
+  .card.accent-green  { border-color: #238636; box-shadow: 0 0 0 1px #23863622 inset; }
+  .card.accent-purple { border-color: #8957e5; box-shadow: 0 0 0 1px #8957e522 inset; }
+  .card.accent-orange { border-color: #d1242f; box-shadow: 0 0 0 1px #d1242f22 inset; }
+  .card.accent-teal   { border-color: #2ea043; box-shadow: 0 0 0 1px #2ea04322 inset; }
+  .card.accent-yellow { border-color: #9e6a03; box-shadow: 0 0 0 1px #9e6a0322 inset; }
+  .card.accent-gray   { border-color: #484f58; }
+
+  .card-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .card-label .dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  .blue .dot   { background: #388bfd; }
+  .green .dot  { background: #3fb950; }
+  .purple .dot { background: #a371f7; }
+  .orange .dot { background: #f78166; }
+  .teal .dot   { background: #56d364; }
+  .yellow .dot { background: #e3b341; }
+  .gray .dot   { background: #7d8590; }
+
+  .card-label .label-text { color: #8b949e; }
+
+  .card h3 {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #f0f6fc;
+    margin-bottom: 10px;
+  }
+
+  /* ─── ITEMS ─────────────────────────────────────────────────── */
+  .items { display: flex; flex-direction: column; gap: 5px; }
+
+  .item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 5px;
+    line-height: 1.4;
+  }
+
+  .item .icon { font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+  .item .name { color: #e6edf3; font-size: 11.5px; }
+  .item .desc { color: #7d8590; font-size: 10.5px; margin-top: 1px; }
+
+  /* ─── FLOW ARROWS ────────────────────────────────────────────── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #7d8590;
+    font-size: 10px;
+  }
+
+  .arrow-down {
+    width: 1px;
+    height: 32px;
+    background: linear-gradient(to bottom, #30363d, #30363d);
+    position: relative;
+  }
+
+  .arrow-down::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: -4px;
+    border: 4px solid transparent;
+    border-top-color: #484f58;
+  }
+
+  /* ─── BADGE ──────────────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .badge-blue   { background: #1f3a5f; color: #79c0ff; border: 1px solid #1f6feb44; }
+  .badge-green  { background: #0e3320; color: #3fb950; border: 1px solid #23863644; }
+  .badge-purple { background: #2a1b5e; color: #d2a8ff; border: 1px solid #8957e544; }
+  .badge-orange { background: #3d1f1f; color: #ffa657; border: 1px solid #d1242f44; }
+  .badge-gray   { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+  .badge-yellow { background: #3a2e00; color: #e3b341; border: 1px solid #9e6a0344; }
+
+  /* ─── SECTION HEADER ─────────────────────────────────────────── */
+  .section-header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .section-header .line {
+    flex: 1;
+    height: 1px;
+    background: #21262d;
+  }
+
+  .section-header .title {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #484f58;
+    white-space: nowrap;
+  }
+
+  /* ─── GRID OVERRIDES ─────────────────────────────────────────── */
+  .span2 { grid-column: span 2; }
+  .span3 { grid-column: span 3; }
+  .span4 { grid-column: span 4; }
+
+  /* ─── FLOW SEQUENCE ──────────────────────────────────────────── */
+  .flow-seq {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+  }
+
+  .flow-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  .flow-step:not(:last-child)::after {
+    content: '→';
+    position: absolute;
+    right: -10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #484f58;
+    font-size: 16px;
+    z-index: 1;
+  }
+
+  .flow-step .step-box {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+    width: 100%;
+    margin: 0 8px;
+  }
+
+  .flow-step .step-num {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #21262d;
+    color: #7d8590;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+
+  .flow-step .step-label { color: #c9d1d9; font-size: 10.5px; font-weight: 500; }
+  .flow-step .step-sub   { color: #7d8590; font-size: 9.5px; margin-top: 2px; }
+
+  /* ─── TABLE ──────────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th {
+    text-align: left;
+    color: #7d8590;
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 8px 8px;
+    border-bottom: 1px solid #21262d;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #0d1117;
+    vertical-align: top;
+    color: #c9d1d9;
+    font-size: 11px;
+  }
+  tr:last-child td { border-bottom: none; }
+  td.mono { font-family: 'SF Mono', monospace; color: #a5d6ff; font-size: 10.5px; }
+  td.muted { color: #7d8590; }
+
+  /* ─── LEGEND ─────────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid #21262d;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #7d8590;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+
+  /* ─── TECH PILLS ─────────────────────────────────────────────── */
+  .pills { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .pill {
+    padding: 2px 8px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    font-size: 10px;
+    color: #8b949e;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+</style>
+</head>
+<body>
+
+<h1>Incharj — System Architecture</h1>
+<p class="subtitle">Multi-tenant knowledge base with connectors, FTS search, and background sync · Current as of March 2026</p>
+
+<div class="diagram">
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ROW 1 — CLIENT
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="section-header">
+    <div class="line"></div>
+    <div class="title">Client</div>
+    <div class="line"></div>
+  </div>
+
+  <!-- Frontend -->
+  <div class="card accent-blue span4">
+    <div class="card-label blue">
+      <span class="dot"></span>
+      <span class="label-text">Frontend · React 18 + Vite · Tailwind CSS</span>
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(4,1fr); gap:10px;">
+      <div>
+        <div class="card-label" style="margin-bottom:8px; font-size:10px; color:#7d8590;">Pages</div>
+        <div class="items">
+          <div class="item"><span class="icon">🔍</span><div><div class="name">/:org/search</div><div class="desc">Full-text search, filters, keyboard nav</div></div></div>
+          <div class="item"><span class="icon">📁</span><div><div class="name">/:org/files</div><div class="desc">Browse indexed docs, pagination</div></div></div>
+          <div class="item"><span class="icon">🔌</span><div><div class="name">/:org/connectors</div><div class="desc">Connect Google Drive / Notion / Slack</div></div></div>
+          <div class="item"><span class="icon">⚙️</span><div><div class="name">/:org/settings</div><div class="desc">Members, invites, org config</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label" style="margin-bottom:8px; font-size:10px; color:#7d8590;">State Management</div>
+        <div class="items">
+          <div class="item"><span class="icon">🐻</span><div><div class="name">Zustand</div><div class="desc">Auth store — user, token, currentOrg</div></div></div>
+          <div class="item"><span class="icon">🔄</span><div><div class="name">TanStack Query</div><div class="desc">Server state, caching (30s stale), pagination</div></div></div>
+          <div class="item"><span class="icon">🪝</span><div><div class="name">useSearch</div><div class="desc">Debounce, filters, page, keyboard nav</div></div></div>
+          <div class="item"><span class="icon">🎨</span><div><div class="name">useTheme</div><div class="desc">Light/dark via CSS vars + localStorage</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label" style="margin-bottom:8px; font-size:10px; color:#7d8590;">API Client</div>
+        <div class="items">
+          <div class="item"><span class="icon">📡</span><div><div class="name">Axios</div><div class="desc">Bearer token injection on every request</div></div></div>
+          <div class="item"><span class="icon">🔁</span><div><div class="name">Interceptor</div><div class="desc">401 → POST /auth/refresh → retry request</div></div></div>
+          <div class="item"><span class="icon">🔒</span><div><div class="name">httpOnly cookie</div><div class="desc">Refresh token sent automatically by browser</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label" style="margin-bottom:8px; font-size:10px; color:#7d8590;">Key Libraries</div>
+        <div class="pills">
+          <span class="pill">react-router-dom v6</span>
+          <span class="pill">date-fns</span>
+          <span class="pill">lucide-react</span>
+          <span class="pill">react-icons/si</span>
+          <span class="pill">@tanstack/react-query</span>
+          <span class="pill">zustand</span>
+          <span class="pill">tailwindcss</span>
+          <span class="pill">vite</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ROW 2 — GATEWAY
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="section-header">
+    <div class="line"></div>
+    <div class="title">Gateway</div>
+    <div class="line"></div>
+  </div>
+
+  <!-- Nginx -->
+  <div class="card accent-gray">
+    <div class="card-label gray">
+      <span class="dot"></span>
+      <span class="label-text">Reverse Proxy</span>
+    </div>
+    <h3>nginx</h3>
+    <div class="items">
+      <div class="item"><span class="icon">🌐</span><div><div class="name">Port 80 / 443</div><div class="desc">TLS termination</div></div></div>
+      <div class="item"><span class="icon">↪️</span><div><div class="name">/api/* → backend:8000</div><div class="desc">API proxy pass</div></div></div>
+      <div class="item"><span class="icon">↪️</span><div><div class="name">/* → frontend:3000</div><div class="desc">SPA fallback (try_files)</div></div></div>
+    </div>
+  </div>
+
+  <!-- Auth Flow -->
+  <div class="card accent-purple span3">
+    <div class="card-label purple">
+      <span class="dot"></span>
+      <span class="label-text">Auth Flow</span>
+    </div>
+    <div class="flow-seq" style="margin-top: 4px;">
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">1</div>
+          <div class="step-label">POST /auth/login</div>
+          <div class="step-sub">email + password</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">2</div>
+          <div class="step-label">Validate bcrypt</div>
+          <div class="step-sub">bcryptjs compare</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">3</div>
+          <div class="step-label">Issue tokens</div>
+          <div class="step-sub">JWT 15m + cookie 30d</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">4</div>
+          <div class="step-label">Middleware</div>
+          <div class="step-sub">requireCurrentUser</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">5</div>
+          <div class="step-label">Role check</div>
+          <div class="step-sub">owner / admin / member</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ROW 3 — BACKEND
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="section-header">
+    <div class="line"></div>
+    <div class="title">Backend · Fastify v5 · TypeScript · Port 8000</div>
+    <div class="line"></div>
+  </div>
+
+  <!-- API Routes -->
+  <div class="card accent-blue">
+    <div class="card-label blue">
+      <span class="dot"></span>
+      <span class="label-text">API Routes · /api/v1</span>
+    </div>
+    <div class="items">
+      <div class="item"><span class="icon">🔐</span><div><div class="name">/auth</div><div class="desc">register, login, refresh, logout, me</div></div></div>
+      <div class="item"><span class="icon">🏢</span><div><div class="name">/orgs</div><div class="desc">CRUD, members, invitations</div></div></div>
+      <div class="item"><span class="icon">🔌</span><div><div class="name">/orgs/:slug/connectors</div><div class="desc">list, create, get, update, delete, sync, pause, resume</div></div></div>
+      <div class="item"><span class="icon">🔍</span><div><div class="name">/orgs/:slug/search</div><div class="desc">FTS + fuzzy, filters, pagination</div></div></div>
+      <div class="item"><span class="icon">📄</span><div><div class="name">/documents</div><div class="desc">List indexed docs, filter, paginate</div></div></div>
+      <div class="item"><span class="icon">🔗</span><div><div class="name">/oauth/:kind/callback</div><div class="desc">OAuth exchange, store encrypted creds</div></div></div>
+    </div>
+  </div>
+
+  <!-- Services -->
+  <div class="card accent-teal">
+    <div class="card-label teal">
+      <span class="dot"></span>
+      <span class="label-text">Services (Business Logic)</span>
+    </div>
+    <div class="items">
+      <div class="item"><span class="icon">🔍</span><div><div class="name">search-service</div><div class="desc">FTS → stop word check → fuzzy fallback</div></div></div>
+      <div class="item"><span class="icon">📦</span><div><div class="name">indexer</div><div class="desc">Chunk text, hash, upsert documents + chunks</div></div></div>
+      <div class="item"><span class="icon">🔐</span><div><div class="name">auth-service</div><div class="desc">bcrypt, JWT issue/verify, session CRUD</div></div></div>
+      <div class="item"><span class="icon">🏢</span><div><div class="name">org-service</div><div class="desc">Membership, invitations, role enforcement</div></div></div>
+      <div class="item"><span class="icon">🔌</span><div><div class="name">connector-service</div><div class="desc">Credential encryption/decryption, OAuth URL</div></div></div>
+    </div>
+  </div>
+
+  <!-- Connectors -->
+  <div class="card accent-orange">
+    <div class="card-label orange">
+      <span class="dot"></span>
+      <span class="label-text">Connectors (OAuth + Fetch)</span>
+    </div>
+    <div class="items">
+      <div class="item"><span class="icon">🟦</span><div><div class="name">Google Drive</div><div class="desc">OAuth2, list by mimeType, PDF parse, incremental sync via modifiedTime</div></div></div>
+      <div class="item"><span class="icon">⬛</span><div><div class="name">Notion</div><div class="desc">OAuth2, pages + blocks recursive, depth=5</div></div></div>
+      <div class="item"><span class="icon">🟣</span><div><div class="name">Slack</div><div class="desc">OAuth2 bot token, channels + threads, 200/page</div></div></div>
+      <div class="item"><span class="icon">🗜️</span><div><div class="name">BaseConnector</div><div class="desc">Abstract: listDocuments(), fetchContent(), refreshCredentials()</div></div></div>
+    </div>
+    <div style="margin-top:10px; padding-top:10px; border-top:1px solid #21262d;">
+      <div style="color:#7d8590; font-size:10px; margin-bottom:4px;">OAuth Flow</div>
+      <div class="flow-seq">
+        <div class="flow-step"><div class="step-box"><div class="step-label">Get URL</div><div class="step-sub">/oauth/authorize</div></div></div>
+        <div class="flow-step"><div class="step-box"><div class="step-label">User consents</div><div class="step-sub">provider redirect</div></div></div>
+        <div class="flow-step"><div class="step-box"><div class="step-label">Exchange code</div><div class="step-sub">/oauth/callback</div></div></div>
+        <div class="flow-step"><div class="step-box"><div class="step-label">Encrypt + store</div><div class="step-sub">Fernet AES</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SQL Layer -->
+  <div class="card accent-gray">
+    <div class="card-label gray">
+      <span class="dot"></span>
+      <span class="label-text">SQL Layer</span>
+    </div>
+    <div class="items">
+      <div class="item"><span class="icon">📝</span><div><div class="name">Raw SQL Templates</div><div class="desc">~61 query files — no ORM</div></div></div>
+      <div class="item"><span class="icon">🔎</span><div><div class="name">search.ts</div><div class="desc">FTS CTE + LATERAL join + fuzzy fallback</div></div></div>
+      <div class="item"><span class="icon">📄</span><div><div class="name">documents.ts</div><div class="desc">list + count queries with filters</div></div></div>
+      <div class="item"><span class="icon">🏗️</span><div><div class="name">schema.ts</div><div class="desc">DDL, extensions, GIN indexes on search_vector</div></div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ROW 4 — WORKERS + QUEUE
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="section-header">
+    <div class="line"></div>
+    <div class="title">Background Workers · BullMQ + Redis</div>
+    <div class="line"></div>
+  </div>
+
+  <!-- Dispatch Worker -->
+  <div class="card accent-yellow">
+    <div class="card-label yellow">
+      <span class="dot"></span>
+      <span class="label-text">Dispatch Worker (every 30s)</span>
+    </div>
+    <div class="items">
+      <div class="item"><span class="icon">🕐</span><div><div class="name">Find due connectors</div><div class="desc">last_synced_at + sync_frequency &lt; now()</div></div></div>
+      <div class="item"><span class="icon">🚫</span><div><div class="name">Skip paused / running</div><div class="desc">status != 'paused', no pending job</div></div></div>
+      <div class="item"><span class="icon">➕</span><div><div class="name">Create sync_job row</div><div class="desc">status = 'pending'</div></div></div>
+      <div class="item"><span class="icon">📤</span><div><div class="name">Enqueue to BullMQ</div><div class="desc">"incharj-sync" queue, "sync" job type</div></div></div>
+    </div>
+  </div>
+
+  <!-- Sync Worker -->
+  <div class="card accent-orange span2">
+    <div class="card-label orange">
+      <span class="dot"></span>
+      <span class="label-text">Sync Worker (concurrency=1)</span>
+    </div>
+    <div class="flow-seq">
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">1</div>
+          <div class="step-label">Decrypt creds</div>
+          <div class="step-sub">Fernet AES</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">2</div>
+          <div class="step-label">Refresh OAuth</div>
+          <div class="step-sub">if token expired</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">3</div>
+          <div class="step-label">listDocuments()</div>
+          <div class="step-sub">async generator</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">4</div>
+          <div class="step-label">fetchContent()</div>
+          <div class="step-sub">per doc, skip unchanged</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">5</div>
+          <div class="step-label">ingestDocument()</div>
+          <div class="step-sub">chunk → hash → upsert</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">6</div>
+          <div class="step-label">Update connector</div>
+          <div class="step-sub">doc_count, last_synced_at</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+      <div class="item"><span class="icon">🔁</span><div><div class="name">Incremental sync</div><div class="desc">modifiedTime > last_synced_at (ISO string)</div></div></div>
+      <div class="item"><span class="icon">#️⃣</span><div><div class="name">Content hash</div><div class="desc">SHA256(title::content) — skips unchanged</div></div></div>
+      <div class="item"><span class="icon">✂️</span><div><div class="name">Chunking</div><div class="desc">800 chars, 100 overlap via chunkText()</div></div></div>
+      <div class="item"><span class="icon">⚠️</span><div><div class="name">Error tolerance</div><div class="desc">Per-doc errors tracked, sync continues</div></div></div>
+    </div>
+  </div>
+
+  <!-- Redis -->
+  <div class="card accent-gray">
+    <div class="card-label gray">
+      <span class="dot"></span>
+      <span class="label-text">Redis · BullMQ Queue</span>
+    </div>
+    <div class="items">
+      <div class="item"><span class="icon">📋</span><div><div class="name">Queue: incharj-sync</div><div class="desc">dispatch + sync job types</div></div></div>
+      <div class="item"><span class="icon">🔄</span><div><div class="name">Repeating job</div><div class="desc">dispatch every 30 seconds</div></div></div>
+      <div class="item"><span class="icon">🧹</span><div><div class="name">Auto-cleanup</div><div class="desc">removeOnComplete: 100</div></div></div>
+      <div class="item"><span class="icon">🔧</span><div><div class="name">Stuck job recovery</div><div class="desc">Restart resets "running" → "failed"</div></div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ROW 5 — DATA / DATABASE
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="section-header">
+    <div class="line"></div>
+    <div class="title">Data Layer · PostgreSQL 16 (pgvector) · Pool size 20</div>
+    <div class="line"></div>
+  </div>
+
+  <!-- Core Tables -->
+  <div class="card accent-green span2">
+    <div class="card-label green">
+      <span class="dot"></span>
+      <span class="label-text">Core Tables</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Table</th>
+          <th>Purpose</th>
+          <th>Key Columns</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">users</td>
+          <td class="muted">Accounts</td>
+          <td>email, hashed_password, is_verified</td>
+        </tr>
+        <tr>
+          <td class="mono">organizations</td>
+          <td class="muted">Tenants</td>
+          <td>slug, name, plan, settings JSONB</td>
+        </tr>
+        <tr>
+          <td class="mono">memberships</td>
+          <td class="muted">Access control</td>
+          <td>org_id, user_id, role (owner/admin/member)</td>
+        </tr>
+        <tr>
+          <td class="mono">sessions</td>
+          <td class="muted">Refresh tokens</td>
+          <td>user_id, refresh_token, expires_at</td>
+        </tr>
+        <tr>
+          <td class="mono">invitations</td>
+          <td class="muted">Pending invites</td>
+          <td>email, token, expires_at (7 days)</td>
+        </tr>
+        <tr>
+          <td class="mono">connectors</td>
+          <td class="muted">Data sources</td>
+          <td>kind, credentials (encrypted), config JSONB, last_synced_at, doc_count</td>
+        </tr>
+        <tr>
+          <td class="mono">sync_jobs</td>
+          <td class="muted">Sync history</td>
+          <td>status, docs_indexed/skipped/errored, error_message</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Search Tables -->
+  <div class="card accent-green span2">
+    <div class="card-label green">
+      <span class="dot"></span>
+      <span class="label-text">Search Tables + Indexes</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Table</th>
+          <th>Purpose</th>
+          <th>Key Columns</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">documents</td>
+          <td class="muted">Indexed docs</td>
+          <td>title, url, kind, ext, content_hash, word_count, mtime, search_vector tsvector</td>
+        </tr>
+        <tr>
+          <td class="mono">document_chunks</td>
+          <td class="muted">Text chunks</td>
+          <td>chunk_index, content, token_count, search_vector tsvector</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:12px; padding-top:10px; border-top:1px solid #21262d;">
+      <div style="color:#7d8590; font-size:10px; margin-bottom:8px; font-family: -apple-system, sans-serif; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">GIN Indexes (fast FTS)</div>
+      <div class="items">
+        <div class="item"><span class="icon">⚡</span><div><div class="name">ix_documents_search_vector</div><div class="desc">GIN on documents.search_vector → document-level FTS</div></div></div>
+        <div class="item"><span class="icon">⚡</span><div><div class="name">ix_chunks_search_vector</div><div class="desc">GIN on document_chunks.search_vector → chunk-level FTS</div></div></div>
+        <div class="item"><span class="icon">⚡</span><div><div class="name">ix_documents_title_trgm</div><div class="desc">GIN trgm on title → fuzzy search fallback</div></div></div>
+      </div>
+    </div>
+    <div style="margin-top:10px; padding-top:10px; border-top:1px solid #21262d;">
+      <div style="color:#7d8590; font-size:10px; margin-bottom:6px; font-family: -apple-system, sans-serif; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Extensions</div>
+      <div class="pills">
+        <span class="pill">pgcrypto (UUID)</span>
+        <span class="pill">pg_trgm (fuzzy)</span>
+        <span class="pill">unaccent (normalize)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ROW 6 — SEARCH PIPELINE
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="section-header">
+    <div class="line"></div>
+    <div class="title">Search Pipeline (End-to-End)</div>
+    <div class="line"></div>
+  </div>
+
+  <!-- Indexing pipeline -->
+  <div class="card accent-teal span2">
+    <div class="card-label teal">
+      <span class="dot"></span>
+      <span class="label-text">Indexing Pipeline (during sync)</span>
+    </div>
+    <div class="flow-seq">
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">1</div>
+          <div class="step-label">fetchContent()</div>
+          <div class="step-sub">raw text from API</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">2</div>
+          <div class="step-label">SHA256 hash</div>
+          <div class="step-sub">title::content</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">3</div>
+          <div class="step-label">chunkText()</div>
+          <div class="step-sub">800 chars / 100 overlap</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">4</div>
+          <div class="step-label">Upsert doc</div>
+          <div class="step-sub">ON CONFLICT external_id</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">5</div>
+          <div class="step-label">Insert chunks</div>
+          <div class="step-sub">delete old, insert new</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">6</div>
+          <div class="step-label">SQL trigger</div>
+          <div class="step-sub">auto-updates search_vector</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Query pipeline -->
+  <div class="card accent-blue span2">
+    <div class="card-label blue">
+      <span class="dot"></span>
+      <span class="label-text">Query Pipeline (on search request)</span>
+    </div>
+    <div class="flow-seq">
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">1</div>
+          <div class="step-label">websearch_to_tsquery</div>
+          <div class="step-sub">'english' dictionary</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">2</div>
+          <div class="step-label">Stop word check</div>
+          <div class="step-sub">empty tsquery → return []</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">3</div>
+          <div class="step-label">FTS via GIN</div>
+          <div class="step-sub">search_vector @@ tsq</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">4</div>
+          <div class="step-label">LATERAL rank</div>
+          <div class="step-sub">ts_rank_cd, age decay</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">5</div>
+          <div class="step-label">ts_headline</div>
+          <div class="step-sub">&lt;&lt;match&gt;&gt; highlight</div>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="step-box">
+          <div class="step-num">6</div>
+          <div class="step-label">Fuzzy fallback</div>
+          <div class="step-sub">similarity() &gt; 0.1</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       ROW 7 — INFRA
+  ══════════════════════════════════════════════════════════════ -->
+  <div class="section-header">
+    <div class="line"></div>
+    <div class="title">Infrastructure · Docker Compose</div>
+    <div class="line"></div>
+  </div>
+
+  <div class="card accent-gray span4">
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px;">
+      <div>
+        <div class="card-label" style="font-size:10px; color:#7d8590; margin-bottom:8px;">🌐 nginx</div>
+        <div class="items">
+          <div class="item"><span class="icon">🔀</span><div><div class="name">Port 80/443</div><div class="desc">TLS, reverse proxy, SPA fallback</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label" style="font-size:10px; color:#7d8590; margin-bottom:8px;">⚡ api</div>
+        <div class="items">
+          <div class="item"><span class="icon">🚀</span><div><div class="name">Node.js · Port 8000</div><div class="desc">Fastify, compiled TS, dist/server.js</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label" style="font-size:10px; color:#7d8590; margin-bottom:8px;">⚙️ worker</div>
+        <div class="items">
+          <div class="item"><span class="icon">🔄</span><div><div class="name">Node.js (same image)</div><div class="desc">npm run worker, BullMQ consumer</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label" style="font-size:10px; color:#7d8590; margin-bottom:8px;">🐘 postgres</div>
+        <div class="items">
+          <div class="item"><span class="icon">💾</span><div><div class="name">pgvector:pg16</div><div class="desc">Port 5432, persistent volume</div></div></div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label" style="font-size:10px; color:#7d8590; margin-bottom:8px;">📦 redis</div>
+        <div class="items">
+          <div class="item"><span class="icon">⚡</span><div><div class="name">redis:7-alpine</div><div class="desc">Port 6379, BullMQ job store</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid #21262d;">
+      <div style="color:#7d8590; font-size:10px; margin-bottom:8px; font-family: -apple-system, sans-serif; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Required Environment Variables</div>
+      <div style="display:grid; grid-template-columns: repeat(4,1fr); gap:6px;">
+        <div class="item"><span class="icon">🔑</span><div><div class="name">DATABASE_URL</div><div class="desc">PostgreSQL connection string</div></div></div>
+        <div class="item"><span class="icon">🔑</span><div><div class="name">REDIS_URL</div><div class="desc">Redis connection string</div></div></div>
+        <div class="item"><span class="icon">🔑</span><div><div class="name">APP_SECRET</div><div class="desc">JWT signing secret</div></div></div>
+        <div class="item"><span class="icon">🔑</span><div><div class="name">ENCRYPTION_KEY</div><div class="desc">Fernet key for OAuth creds</div></div></div>
+        <div class="item"><span class="icon">🔵</span><div><div class="name">GOOGLE_CLIENT_ID/SECRET</div><div class="desc">Google Drive OAuth app</div></div></div>
+        <div class="item"><span class="icon">⬛</span><div><div class="name">NOTION_CLIENT_ID/SECRET</div><div class="desc">Notion integration</div></div></div>
+        <div class="item"><span class="icon">🟣</span><div><div class="name">SLACK_CLIENT_ID/SECRET</div><div class="desc">Slack bot OAuth</div></div></div>
+        <div class="item"><span class="icon">🌐</span><div><div class="name">FRONTEND_URL</div><div class="desc">For CORS + OAuth redirect URIs</div></div></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /diagram -->
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#388bfd"></div>Frontend / API</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>Database / Data</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f78166"></div>Connectors / External</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#56d364"></div>Services / Business logic</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#e3b341"></div>Workers / Queue</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#a371f7"></div>Auth</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7d8590"></div>Infrastructure</div>
+  <div style="margin-left:auto; color:#484f58; font-family: -apple-system, sans-serif;">Incharj Architecture · March 2026</div>
+</div>
+
+</body>
+</html>

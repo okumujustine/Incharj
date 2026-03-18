@@ -72,7 +72,7 @@ getConnector({
 
 ## Incremental sync
 
-The worker passes `last_synced_at` from the connector row into the config object. Each connector reads `this.config.last_synced_at` and filters at the source API level:
+The worker passes `last_synced_at` from the connector row into the config object as an **ISO string** (PostgreSQL returns it as a `Date` object — `runner.ts` converts it with `.toISOString()` before passing it in). Each connector reads `this.config.last_synced_at` and filters at the source API level:
 
 - **Google Drive**: `modifiedTime > '${lastSyncedAt}'` query parameter
 - **Notion**: `filter.last_edited_time.after` parameter
@@ -80,14 +80,42 @@ The worker passes `last_synced_at` from the connector row into the config object
 
 If `last_synced_at` is undefined (first sync), the connector fetches all available documents.
 
+## Sync limit (`max_documents`)
+
+Connectors read `this.config.max_documents` (a number or `null`) from the connector's config JSONB. When set, `listDocuments()` stops yielding after that many documents. This is useful for limiting scope during development or testing without modifying code.
+
+Configure it from the Connector Detail page → "Sync limit" card, or via `PATCH /connectors/:id` with `{ "config": { "max_documents": 500 } }`.
+
 ---
 
 ## OAuth flow
 
-1. Frontend calls `GET /connectors/:id/oauth/authorize` → API calls `connector.authorizeUrl(state)` → returns the provider's consent URL.
-2. User approves → provider redirects to `GET /connectors/:id/oauth/callback?code=…&state=…`.
-3. API calls `connector.exchangeCode(code, redirectUri)` → returns a credentials object.
-4. Credentials are encrypted with AES-GCM (`encryptCredentials`) and stored in `connectors.credentials`.
+1. Frontend calls `GET /connectors/:id/oauth/authorize` → API returns the provider's consent URL. The state param is persisted in `localStorage` keyed as `oauth_state:<state>` so the callback page can look up the connector ID.
+2. User approves → provider redirects to `GET /oauth/:kind/callback?code=…&state=…`.
+3. API reads the state from `localStorage`, calls `connector.exchangeCode(code, redirectUri)` → returns a credentials object.
+4. Credentials are encrypted with AES-GCM (`encryptCredentials`) and stored in `connectors.credentials`. `has_credentials` is set to `true`.
+
+## Content fetching details
+
+### Google Drive
+
+Supported file types: Google Docs (exported as plain text), Google Sheets (exported as CSV), Google Slides (exported as plain text), PDF, plain text, Markdown, HTML, CSV.
+
+- Files are streamed from the Drive API (`alt=media`), capped at 2MB per file.
+- **PDFs** are parsed with `pdf-parse` (loaded via `require()` since it is a CJS module). The raw bytes are collected into a `Buffer` and passed to `pdf-parse` to extract plain text.
+- HTML responses have tags stripped before indexing.
+
+### Notion
+
+- Pages are listed via the Notion search endpoint (100 per page).
+- Block content is collected recursively up to depth 5.
+- Title is extracted from the property named `"title"`, `"Name"`, or `"Title"`.
+
+### Slack
+
+- All public and private channels are listed.
+- Messages are fetched 200 at a time; threads are fetched separately.
+- Each message is indexed as `kind: "message"`, `ext: "slack"`.
 
 ---
 
