@@ -1,103 +1,95 @@
 # Architecture
 
-## System overview
-
-Incharj runs as four independent Docker services:
-
-```
-┌─────────────┐     HTTP/REST     ┌──────────────────┐
-│   Browser   │ ◄───────────────► │   nginx          │
-│  (React SPA)│                   └──┬───────────────┘
-└─────────────┘                      │ /api/*             /* (SPA)
-                                     ▼
-                              ┌──────────────────┐
-                              │  API (Fastify)   │
-                              │  Port 8000       │
-                              └────────┬─────────┘
-                                       │ pg
-                                       ▼
-                              ┌────────────────┐      ┌───────────┐
-                              │  PostgreSQL    │      │   Redis   │
-                              │  (pg_trgm,     │      │  (BullMQ) │
-                              │   pgcrypto)    │      └─────┬─────┘
-                              └───────┬────────┘            │
-                                      ▲ pg                  │ queue
-                              ┌───────┴────────┐            │
-                              │    Worker      │ ◄──────────┘
-                              │  (BullMQ)      │
-                              └───────┬────────┘
-                                      │ OAuth / REST
-                                      ▼
-                         ┌─────────────────────────┐
-                         │  External APIs           │
-                         │  (Google Drive / Notion  │
-                         │   / Slack)               │
-                         └─────────────────────────┘
-```
-
-The API and the Worker share the same PostgreSQL database but run as separate processes (`npm run dev` / `npm run worker`, or separate Docker services). Redis is used exclusively by BullMQ for the sync job queue.
+Incharj has one job: connect to external knowledge sources, index their content, and make it searchable. Everything in the codebase exists to serve that loop.
 
 ---
 
-## Data flow
+## The core loop
 
-### 1. Connect
+```
+External source          Worker process              PostgreSQL
+(Google Drive,    ──►   Connector                  ┌─────────────────┐
+ Notion, Slack)         listDocuments()  ──────────►│ connectors      │
+                        fetchContent()              │ sync_jobs       │
+                              │                     │ documents       │
+                              ▼                     │ document_chunks │
+                         Indexer                    └────────┬────────┘
+                         ingestDocument()                    │
+                              │                             GIN
+                              └──── search_vector ──────────►│
+                                    (pre-computed)           │
+                                                   ┌─────────▼────────┐
+                                    API ◄──────────│  Search engine   │
+                                    query          └──────────────────┘
+```
 
-1. User clicks "Connect" on the Connectors page — frontend creates a connector via `POST /orgs/:slug/connectors`.
-2. Frontend calls `GET /connectors/:id/oauth/authorize` → API returns the provider's OAuth consent URL.
-3. OAuth state is stored in `localStorage` keyed by state param so the callback page can resume.
-4. User approves → provider redirects to `GET /oauth/:kind/callback?code=…&state=…`.
-5. Callback exchanges the code for tokens, encrypts them with AES-GCM, stores in `connectors.credentials`, marks `has_credentials = true`.
+Three processes share the same PostgreSQL database:
 
-### 2. Sync
+| Process | Role |
+|---|---|
+| **API** (Fastify) | Handles HTTP requests — auth, connectors, search, documents |
+| **Worker** (BullMQ) | Runs sync jobs — fetches, indexes, updates search vectors |
+| **Redis** | Job queue only — BullMQ stores pending and running sync jobs |
 
-1. **Dispatch worker** repeating job (every 30s) runs `dispatchDueSyncs()`:
-   - Finds connectors where `last_synced_at + sync_frequency < now()` and status is not `paused`.
-   - Skips connectors that already have a pending or running BullMQ job.
-   - Inserts a `pending` row in `sync_jobs`, enqueues a `"sync"` job into BullMQ.
-2. **Sync worker** (concurrency=1) picks up the job:
-   - Decrypts credentials, refreshes OAuth token if needed.
-   - Passes `last_synced_at` (ISO string) into connector config for incremental filtering.
-   - Calls `connector.listDocuments()` (async generator) → for each doc calls `connector.fetchContent()`.
-   - Calls `ingestDocument()` per document — each in its own PostgreSQL transaction:
-     - Computes SHA-256 of `title::content` → skips if hash unchanged.
-     - Chunks text (800 chars / 100-char overlap), upserts `documents` + `document_chunks`.
-     - SQL trigger updates `search_vector` (pre-computed tsvector) on both tables.
-   - Updates `sync_jobs` row with `docs_indexed / docs_skipped / docs_errored`.
-   - Updates `connectors.doc_count` and `last_synced_at`.
+---
 
-### 3. Search
+## How a sync happens
 
-1. Frontend debounces input (300ms), sends `GET /orgs/:slug/search?q=…&limit=20&offset=…`.
-2. API checks if `websearch_to_tsquery('english', q)` produces an empty string → returns 0 results immediately (stop words like "the").
-3. Runs `ftSearch()` using pre-computed `search_vector` GIN indexes — no runtime `to_tsvector()`.
-4. LATERAL join finds the best matching chunk per document; `ts_rank_cd` with time-decay scores results.
-5. `ts_headline` generates snippet with `<<match>>` delimiters (up to 5KB input cap).
-6. If FTS total = 0 → falls back to `fuzzySearch()` using `similarity()` on document titles only (GIN trgm index).
-7. Results returned with `total` for frontend pagination (20 per page).
+A **dispatch job** runs every 30 seconds and finds connectors where `last_synced_at + sync_frequency < now()`. For each due connector it creates a `sync_jobs` row (status = `pending`) and enqueues a `"sync"` job to Redis.
 
-### 4. Browse files
+The **sync worker** (concurrency = 1) picks up the job and calls `runSync()`:
 
-Frontend `FilesPage` calls `GET /documents?org=<slug>` with optional `connector_id` / `kind` filters and `limit` / `offset` for pagination (50 per page). The backend runs the list and count queries in parallel.
+```
+1. Decrypt OAuth credentials (AES-GCM)
+2. Refresh access token if expired
+3. connector.listDocuments()  ← async generator, incremental via last_synced_at
+4. for each doc:
+     connector.fetchContent()
+     ingestDocument()          ← own transaction, failure is isolated
+5. Update connectors.doc_count + last_synced_at
+```
+
+See [Indexer](./indexer) for what happens inside `ingestDocument()`.
+
+---
+
+## How a search happens
+
+```
+Browser → GET /orgs/:slug/search?q=product+roadmap
+              │
+              ▼
+         Stop word check  ← websearch_to_tsquery empty? → return [] immediately
+              │
+              ▼
+         FTS query        ← search_vector @@ tsq  (GIN index, no table scan)
+              │
+         total > 0? ──yes──► rank + snippet → return
+              │
+             no
+              ▼
+         Fuzzy query      ← similarity(title, q) > 0.1  (GIN trgm index)
+              │
+              ▼
+         return results
+```
+
+See [Search](./search) for the full ranking formula and scoring details.
 
 ---
 
 ## Multi-tenancy
 
-Every table (except `sessions`) carries an `org_id` column. All queries are scoped by org. The API middleware resolves the org from the URL slug and validates that the authenticated user is a member before any data access.
+Every table that holds user data carries an `org_id` column. All queries — search, documents, connectors — are filtered by `org_id` before anything else. The API middleware resolves the org from the URL slug and verifies the caller is a member before allowing any data access.
 
 ---
 
-## Key design decisions
+## Key constraints that shaped the design
 
-| Decision | Rationale |
-|---|---|
-| BullMQ + Redis job queue | Reliable job delivery, deduplication, retry, and cleanup without polling PostgreSQL |
-| Raw SQL in `sql/` | Easy to read and tune; no ORM magic hiding expensive queries |
-| Per-document transaction | One failed document doesn't abort the whole sync run |
-| Incremental sync | Connectors receive `last_synced_at` (ISO string) in config and filter at source API level |
-| Content hash includes title | SHA-256 of `title::content` so title-only renames trigger re-index |
-| GIN indexes on `search_vector` | Pre-computed tsvector + GIN indexes keep FTS queries fast at scale |
-| Stop word short-circuit | `websearch_to_tsquery` on stop words → empty string → skip DB query entirely |
-| Fuzzy on title only | Chunk-content trigram scanning can't use an index in a subquery; title-only uses `ix_documents_title_trgm` |
-| Encrypted credentials | OAuth tokens stored AES-GCM encrypted; key lives in `ENCRYPTION_KEY` env var |
+**Pre-computed search vectors** — `to_tsvector()` is called at index time, not query time. Two GIN indexes (`ix_documents_search_vector`, `ix_chunks_search_vector`) let the search query skip the tokenisation step entirely.
+
+**Per-document transactions** — each call to `ingestDocument()` runs in its own `BEGIN / COMMIT`. A malformed PDF or a network hiccup on one document is counted as `docs_errored` and the sync continues.
+
+**Incremental sync at the source** — connectors filter changed documents using the source API's own query parameters (e.g. Google Drive `modifiedTime >`). Only genuinely new or changed documents reach the indexer.
+
+**Content hash includes title** — `SHA-256(title::content)` means a rename with no body change still triggers re-index. Without the title in the hash, renames would be silently ignored.

@@ -1,98 +1,77 @@
 # Authentication
 
-## Overview
-
-Authentication uses short-lived JWT access tokens plus long-lived refresh tokens stored in an httpOnly cookie. There is no OAuth-based login for the platform itself — users register with email and password.
+Platform auth (user login) and connector auth (OAuth to external services) are separate concerns. Neither depends on the other.
 
 ---
 
-## Token flow
+## User auth — token flow
 
 ```
-POST /auth/register or /auth/login
+POST /auth/login  { email, password }
   │
-  ├─► access_token (JWT, 15 min)  → returned in response body
-  └─► refresh_token (opaque)      → set as httpOnly cookie (30 days)
+  ├─► access_token  (JWT, 15 min)     → response body
+  └─► refresh_token (opaque, 30 days) → httpOnly cookie
 
-Frontend stores access_token in memory.
-On 401 → POST /auth/refresh → new access_token + rotated refresh_token cookie.
-POST /auth/logout → cookie cleared + session row deleted.
+Every request: Authorization: Bearer <access_token>
+
+On 401:
+  POST /auth/refresh  ← browser sends cookie automatically
+    │
+    ├─► new access_token
+    └─► rotated refresh_token cookie  (old session row deleted)
+
+POST /auth/logout → cookie cleared + session deleted
 ```
 
----
+**Access token** — JWT signed with `APP_SECRET` (`jose`). Payload: `{ sub: userId, email, name }`. Verified on every protected request in `middleware/auth.ts`.
 
-## Access token (JWT)
-
-- Signed with `APP_SECRET` using `jose`.
-- Payload: `{ sub: userId, email, name }`.
-- Lifetime: `ACCESS_TOKEN_EXPIRE_MINUTES` (default 15 minutes).
-- Sent as `Authorization: Bearer <token>` on every request.
-
-## Refresh token
-
-- Opaque random string stored in `sessions` table.
-- Set as an httpOnly, `sameSite=lax` cookie on the `/api/v1/auth` path.
-- Lifetime: `REFRESH_TOKEN_EXPIRE_DAYS` (default 30 days).
-- **Rotated on every refresh** — old session row deleted, new one inserted.
+**Refresh token** — opaque random string stored in the `sessions` table and in an httpOnly, `sameSite=lax` cookie. Rotated on every use — if a refresh token is stolen and used, the legitimate user's next request will fail and they'll be logged out.
 
 ---
 
-## Middleware
+## Request middleware
 
-`backend/src/middleware/auth.ts` exports:
+All protected routes use the same two-step check:
 
-| Function | Description |
-|---|---|
-| `requireCurrentUser` | Fastify preHandler — verifies JWT, loads user from DB, attaches to `request.user`. Throws 401 if missing or invalid. |
-| `getCurrentUser(request)` | Reads the already-attached user (call after `requireCurrentUser`). |
-| `getCurrentMembership(slug, userId)` | Verifies the user is a member of the org identified by `slug`. Returns the membership row. Throws 403 if not a member. |
-| `requireRole(membership, roles)` | Throws 403 if the membership role is not in the allowed list. |
+```ts
+// 1. Verify JWT, load user
+api.get('/orgs/:slug/connectors', { preHandler: requireCurrentUser }, async (req) => {
+  const user = getCurrentUser(req)
 
-Usage in route files:
-
-```typescript
-api.get("/orgs/:slug/connectors", { preHandler: requireCurrentUser }, async (request) => {
-  const user = getCurrentUser(request);
-  const membership = await getCurrentMembership(slug, user.id);
-  requireRole(membership, ["owner", "admin"]);
-  // ...
-});
+  // 2. Verify org membership + role
+  const membership = await getCurrentMembership(slug, user.id)
+  requireRole(membership, ['owner', 'admin'])
+})
 ```
 
----
-
-## Password hashing
-
-Passwords are hashed with `bcryptjs` (default cost factor) before storage. Plain text passwords are never stored or logged.
-
----
-
-## Credential encryption (connector OAuth tokens)
-
-OAuth tokens from external providers (Google, Notion, Slack) are encrypted at rest using AES-GCM:
-
-- Key: `ENCRYPTION_KEY` env var (32 bytes, base64url encoded).
-- Helpers: `encryptCredentials(obj)` / `decryptCredentials(ciphertext)` in `utils/security.ts`.
-- Stored in `connectors.credentials` as a base64-encoded ciphertext string.
-- Decrypted only in the worker's `runner.ts` when a sync begins.
-
----
-
-## Roles
-
-| Role | Permissions |
+| Function | What it does |
 |---|---|
-| `owner` | Full access including org deletion and owner transfer |
-| `admin` | Create/update/delete connectors, manage members |
-| `member` | Read access — can view connectors, documents, search |
+| `requireCurrentUser` | Verifies JWT, loads user from DB, attaches to `request.user`. Throws 401 if missing or invalid. |
+| `getCurrentMembership` | Confirms the user is a member of the org in the URL slug. Throws 403 if not. |
+| `requireRole` | Throws 403 if membership role is not in the allowed list. |
 
-Roles are checked per-request via `requireRole()` — there is no caching of role decisions.
+**Roles**: `owner` (full access) · `admin` (connectors + members) · `member` (read only)
 
 ---
 
-## Sessions table
+## Connector OAuth — credential storage
 
-Each login creates a row in `sessions`. On logout or token refresh the old row is deleted. This allows:
+OAuth tokens from Google, Notion, and Slack are encrypted before storage:
 
-- Listing active sessions (not yet exposed in the API but the data is there).
-- Immediate revocation — invalidating a session row makes the refresh token unusable even before it expires.
+```
+exchangeCode(code) → { access_token, refresh_token, ... }
+       │
+encryptCredentials()   ← AES-GCM, key from ENCRYPTION_KEY env var
+       │
+stored in connectors.credentials  (TEXT column, base64-encoded ciphertext)
+       │
+decryptCredentials()   ← only called in worker/runner.ts at sync start
+```
+
+Credentials are never logged or returned via the API. The only place they are decrypted is `runner.ts`, immediately before the connector uses them to call the external API.
+
+---
+
+## Passwords
+
+Stored as bcrypt hashes (via `bcryptjs`). Plain text never touches the database or logs.

@@ -4,52 +4,41 @@ layout: home
 hero:
   name: Incharj
   text: Developer Documentation
-  tagline: Multi-tenant document intelligence platform — connect, sync, and search your knowledge base.
+  tagline: Connect external sources → index their content → make it searchable. Everything else is plumbing.
   actions:
     - theme: brand
       text: Get Started
       link: /getting-started
     - theme: alt
-      text: Architecture
+      text: How it works
       link: /architecture
     - theme: alt
-      text: API Reference
-      link: /api
+      text: Architecture Diagram
+      link: /architecture-diagram.html
+      target: _blank
 
 features:
-  - icon: 🔌
-    title: Connectors
-    details: OAuth integrations with Google Drive, Notion, and Slack. Incremental sync, credential encryption, and pluggable connector registry.
-    link: /connectors
-    linkText: Learn more
+  - icon: 🏗️
+    title: Architecture
+    details: The core sync loop — how connectors, the indexer, and the search engine fit together.
+    link: /architecture
+    linkText: Read
+
+  - icon: 📦
+    title: Indexer
+    details: How raw content becomes searchable records — hashing, chunking, upsert, and pre-computed search vectors.
+    link: /indexer
+    linkText: Read
 
   - icon: 🔍
-    title: Hybrid Search
-    details: PostgreSQL full-text search with GIN indexes and time-decay scoring, with trigram similarity fallback. Stop-word short-circuit for instant empty results.
+    title: Search
+    details: Three-tier strategy — stop-word guard, GIN full-text search with time-decay scoring, trigram fuzzy fallback.
     link: /search
-    linkText: Learn more
-
-  - icon: ⚙️
-    title: Background Workers
-    details: BullMQ + Redis job queue. Dispatch worker every 30s, sync worker with per-document transactions and error tolerance.
-    link: /workers
-    linkText: Learn more
-
-  - icon: 🗄️
-    title: PostgreSQL
-    details: Raw SQL, no ORM. Pre-computed tsvector columns with GIN indexes. Multi-tenant with org_id on every table.
-    link: /database
-    linkText: Learn more
-
-  - icon: ⚛️
-    title: React Frontend
-    details: TanStack Query, Zustand, light/dark theming via CSS variables. Search with debounce, pagination, and keyboard navigation.
-    link: /frontend
-    linkText: Learn more
+    linkText: Read
 
   - icon: 🔐
-    title: Auth
-    details: JWT access tokens (15 min) + httpOnly refresh token cookie (30 days). Role-based access per org membership.
+    title: Authentication
+    details: JWT + rotating refresh tokens for users. AES-GCM encrypted OAuth credentials for connectors.
     link: /auth
-    linkText: Learn more
+    linkText: Read
 ---
