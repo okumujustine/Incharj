@@ -1,0 +1,1 @@
+import{_ as t,o as e,c as a,ag as i}from"./chunks/framework.DAvaMl8U.js";const k=JSON.parse('{"title":"Indexer","description":"","frontmatter":{},"headers":[],"relativePath":"indexer.md","filePath":"indexer.md"}'),n={name:"indexer.md"};function h(d,s,l,r,o,c){return e(),a("div",null,[...s[0]||(s[0]=[i("",43)])])}const g=t(n,[["render",h]]);export{k as __pageData,g as default};

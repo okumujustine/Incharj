@@ -1,0 +1,1 @@
+import{_ as e,o as a,c as i,ag as t}from"./chunks/framework.DAvaMl8U.js";const c=JSON.parse('{"title":"Authentication","description":"","frontmatter":{},"headers":[],"relativePath":"auth.md","filePath":"auth.md"}'),n={name:"auth.md"};function h(l,s,r,p,o,d){return a(),i("div",null,[...s[0]||(s[0]=[t("",58)])])}const E=e(n,[["render",h]]);export{c as __pageData,E as default};
