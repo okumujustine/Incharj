@@ -6,7 +6,7 @@ export default defineConfig({
   title: 'Incharj',
   description: 'Core engine documentation — indexer, search, architecture, auth',
   cleanUrls: true,
-  base: isProd ? '/docs/' : '/',
+  base: isProd ? '/Incharj/' : '/',
 
   head: [
     ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
