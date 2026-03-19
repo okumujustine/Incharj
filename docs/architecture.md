@@ -97,32 +97,29 @@ For each result it checks whether a BullMQ job already exists for that connector
 
 Manual sync (clicking "Sync now" in the UI) bypasses the schedule check and goes straight to enqueueing.
 
-### 3. Sync execution
+### 3. Sync execution — three-stage pipeline
 
-The sync worker picks up the job (concurrency = 1 — no two syncs run simultaneously):
+The sync worker picks up jobs using a staged pipeline. A sync job spawns three job types:
 
 ```
-runner.ts: runSync(connectorModel)
-  │
-  ├─ decryptCredentials(connectorModel.credentials)
-  │
-  ├─ connector.refreshCredentials()
-  │    Google: POST https://oauth2.googleapis.com/token with refresh_token
-  │    Notion/Slack: long-lived tokens, returns null (no refresh needed)
-  │
-  ├─ Build config for connector:
-  │    last_synced_at: new Date(connectorModel.last_synced_at).toISOString()
-  │    max_documents:  connectorModel.config?.max_documents ?? undefined
-  │
-  ├─ for await (const doc of connector.listDocuments()) {
-  │      content = await connector.fetchContent(doc.external_id, doc.metadata)
-  │      await ingestDocument(client, orgId, connectorId, { ...doc, content })
-  │                  ↑
-  │             own transaction
-  │  }
-  │
-  └─ UPDATE connectors SET doc_count = (SELECT count(*) ...), last_synced_at = now()
+Stage 1: Enumerate                Stage 2: Document (per doc)        Stage 3: Finalize
+─────────────────────            ──────────────────────────          ─────────────
+BullMQ: "sync-enumerate"         BullMQ: "sync-document" (N jobs)   BullMQ: "sync-finalize"
+  │                                │                                   │
+  ├─ Load connector               ├─ Load connector                  ├─ Wait for Stage 2
+  ├─ Decrypt credentials          ├─ Decrypt credentials            │  (all docs processed)
+  ├─ Get checkpoint               ├─ Fetch document via plugin      │
+  ├─ Call plugin.enumerate()      ├─ Build CanonicalDocumentEnvelope ├─ Save checkpoint
+  │  └─ yields N items            ├─ Call ingestCanonicalDocument() │  └─ stores in DB
+  │                               │  └─ Normalize → Chunk → Index    │
+  └─ Enqueue N "sync-document"    └─ Increment docs_processed       └─ UPDATE connectors
+     jobs + 1 "sync-finalize"
 ```
+
+Each stage is **strongly typed** with job data:
+- `EnumerateJobData`: { syncJobId, connectorId }
+- `DocumentJobData`: { syncJobId, connectorId, ref: ConnectorDocumentRef }
+- `FinalizeJobData`: { syncJobId, connectorId, checkpoint, encryptedCredentials }
 
 ### 4. Connector-specific fetch behaviour
 
@@ -246,52 +243,95 @@ Resuming sets `status = 'idle'`, making the connector eligible for the next disp
 
 ---
 
-## Codebase map
+## Backend domain structure
+
+The backend is organized as a **modular monolith** with clear domain boundaries aligned to the sync pipeline:
 
 ```
 backend/src/
-├── server.ts              entry point — buildApp() + listen
-├── app.ts                 Fastify instance, plugins, route registration
-├── db.ts                  pg pool, query(), withTransaction(), initializeDatabase()
-├── config.ts              env vars with defaults
-├── errors.ts              NotFoundError, BadRequestError, ForbiddenError …
 │
-├── routes/                one file per resource
-│   ├── auth.ts
-│   ├── connectors.ts
-│   ├── oauth.ts
-│   ├── search.ts
-│   ├── documents.ts
-│   └── orgs.ts
+├── connectors/              Stage 0: Fetch raw items from external sources
+│   ├── plugin-types.ts      strict ConnectorPlugin interface contract
+│   ├── registry.ts          provider registration & resolution
+│   ├── google-drive.ts      Google Drive provider
+│   ├── notion.ts            Notion provider
+│   └── slack.ts             Slack provider
 │
-├── middleware/auth.ts      requireCurrentUser, getCurrentMembership, requireRole
+├── normalization/           Stage 1: Sanitize, deduplicate, upsert documents
+│   ├── normalizer.ts        sanitize content, compute checksums, run dedup check
+│   └── index.ts             re-export NormalizedDocument interface
+│
+├── chunking/                Stage 2: Split content into searchable units
+│   ├── chunk-processor.ts   chunkText, calculate token counts, persist chunks
+│   └── index.ts             re-export ProcessedChunk interface
+│
+├── indexing/                Stage 3: Write to search backends (GIN vectors)
+│   ├── indexer.ts           updateSearchIndex(), finalizeSearchability()
+│   └── index.ts             re-export index functions
+│
+├── permissions/             Stage 4: Resolve and attach ACL metadata
+│   ├── permission-resolver.ts  resolveDocumentPermissions(), validateAndAttachPermissions()
+│   └── index.ts             re-export PermissionEntry, ResolvedPermissions types
+│
+├── workers/                 Job orchestration & scheduling
+│   ├── processor.ts         process{Enumerate,Document,Finalize}Job() with typed errors
+│   ├── scheduler.ts         dispatchDueSyncs() every 30s
+│   ├── index.ts             BullMQ Worker setup, job routing
+│   └── queue.ts             BullMQ queue instance
+│
+├── routes/                  HTTP endpoints (one file per resource)
+│   ├── auth.ts              login, register, refresh, logout
+│   ├── connectors.ts        OAuth setup, list, pause/resume, manual sync
+│   ├── oauth.ts             OAuth callback handler
+│   ├── documents.ts         list documents with filters
+│   ├── search.ts            full-text + fuzzy search
+│   └── orgs.ts              multi-tenant org management
 │
 ├── services/
-│   ├── indexer.ts          ingestDocument() — the core indexing pipeline
-│   └── search-service.ts   fullTextSearch() — FTS + fuzzy orchestration
+│   ├── indexer.ts           facade: ingestCanonicalDocument() → calls pipeline stages
+│   ├── search-service.ts    fullTextSearch() with fallback
+│   ├── auth-service.ts      JWT, session, refresh logic
+│   └── …
 │
-├── connectors/
-│   ├── base.ts             BaseConnector abstract class
-│   ├── registry.ts         kind → class map, getConnector(), loadConnectors()
-│   ├── google-drive.ts
-│   ├── notion.ts
-│   └── slack.ts
+├── middleware/
+│   └── auth.ts              requireCurrentUser, getCurrentMembership, requireRole
 │
-├── workers/
-│   ├── index.ts            BullMQ Worker setup, job routing
-│   ├── scheduler.ts        dispatchDueSyncs()
-│   ├── processor.ts        processJob() — marks running/done/failed in DB
-│   └── runner.ts           runSync() — orchestrates one full connector sync
+├── sql/                     All SQL as typed constants & builders
+│   ├── schema.ts            CREATE TABLE, CREATE INDEX (idempotent)
+│   ├── search.ts            FTS, fuzzy, count queries
+│   ├── documents.ts         list/count queries w/ filters
+│   ├── indexer.ts           upsert document, chunk CRUD, search_vector updates
+│   ├── connectors.ts        connector CRUD
+│   ├── checkpoints.ts       connector_sync_state select/upsert
+│   ├── sync-jobs.ts         sync_jobs lifecycle, counters
+│   └── …
 │
-├── sql/                   all SQL as named constants or builder functions
-│   ├── schema.ts           DDL — all CREATE TABLE / CREATE INDEX
-│   ├── search.ts           buildFtsQuery, buildFuzzyQuery, buildFtsCountQuery
-│   ├── documents.ts        buildListDocumentsSql, buildCountDocumentsSql
-│   ├── connectors.ts       connector CRUD queries
-│   ├── indexer.ts          upsert + chunk insert + search_vector update queries
+├── types/
+│   ├── document-envelope.ts  CanonicalDocumentEnvelope — 23-field standard doc model
+│   ├── sync-errors.ts       SyncPipelineError, SyncErrorCode enum
+│   ├── connector.ts         ConnectorConfig, ConnectorDocument
+│   ├── db.ts               DocRow, ChunkRow, ConnectorRow
 │   └── …
 │
 └── utils/
-    ├── chunker.ts          chunkText(), approximateTokenCount()
-    └── security.ts         sha256(), encryptCredentials(), decryptCredentials()
+    ├── chunker.ts           chunkText(), approximateTokenCount()
+    ├── security.ts          sha256(), encrypt/decryptCredentials()
+    ├── logger.ts            structured logging
+    └── …
 ```
+
+### Pipeline stages (intake to search)
+
+Each stage owns its inputs, outputs, and error handling:
+
+| Stage | Input | Output | Module | Responsibility |
+|-------|-------|--------|--------|---|
+| 0 — Fetch | ConnectorPlugin | CanonicalDocumentEnvelope | `connectors/` | Raw item enumeration, OAuth, rate limits |
+| 1 — Normalize | CanonicalDocumentEnvelope | NormalizedDocument | `normalization/` | Content sanitization, checksum, dedup check |
+| 2 — Chunk | NormalizedDocument | ProcessedChunk[] | `chunking/` | Text splitting, token counting, persistence |
+| 3 — Index | ProcessedChunk[] | void | `indexing/` | GIN vector update, full-text indexing |
+| 4 — Permissions | CanonicalDocumentEnvelope | ResolvedPermissions | `permissions/` | ACL metadata, org-level visibility checks |
+
+---
+
+## Codebase map
