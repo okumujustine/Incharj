@@ -20,25 +20,25 @@ hero:
 features:
   - icon: 🏗️
     title: Architecture
-    details: The core sync loop — how connectors, the indexer, and the search engine fit together.
+    details: "System-level view of API, worker, PostgreSQL, and Redis, plus end-to-end sync/search flow."
     link: /architecture
     linkText: Read
 
   - icon: 📦
-    title: Indexer
-    details: How raw content becomes searchable records — hashing, chunking, upsert, and pre-computed search vectors.
+    title: Core Pipeline
+    details: "Split core docs by module: orchestration, connectors, normalization, chunking, indexing, and permissions."
     link: /indexer
     linkText: Read
 
   - icon: 🔍
     title: Search
-    details: Three-tier strategy — stop-word guard, GIN full-text search with time-decay scoring, trigram fuzzy fallback.
+    details: "Three-tier strategy: stop-word guard, GIN full-text search with time-decay scoring, trigram fuzzy fallback."
     link: /search
     linkText: Read
 
   - icon: 🔐
     title: Authentication
-    details: JWT + rotating refresh tokens for users. AES-GCM encrypted OAuth credentials for connectors.
+    details: "JWT + rotating refresh tokens for users. AES-GCM encrypted OAuth credentials for connectors."
     link: /auth
     linkText: Read
 ---
