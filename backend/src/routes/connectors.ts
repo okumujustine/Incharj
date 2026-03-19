@@ -100,8 +100,8 @@ export default async function connectorRoutes(api: FastifyInstance) {
     if (!connector.credentials) throw new BadRequestError("Connector has no credentials - complete OAuth first");
     const result = await query(SQL_INSERT_SYNC_JOB, [connectorId, organization.id, "manual"]);
     const syncJob = result.rows[0];
-    await syncQueue.add("sync", { syncJobId: syncJob.id, connectorId }, {
-      jobId: `sync-${syncJob.id}`,
+    await syncQueue.add("sync-enumerate", { syncJobId: syncJob.id, connectorId }, {
+      jobId: `sync-enumerate-${syncJob.id}`,
     });
     reply.status(202).send(mapSyncJob(syncJob));
   });

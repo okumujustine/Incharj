@@ -51,10 +51,11 @@ export const SQL_UPDATE_CONNECTOR_CREDENTIALS = `
 export const SQL_UPDATE_CONNECTOR_AFTER_SYNC = `
   UPDATE connectors
   SET credentials = $2,
+      sync_cursor = $3,
       last_synced_at = now(),
       status = 'idle',
       last_error = NULL,
-      doc_count = $3
+      doc_count = $4
   WHERE id = $1
 `;
 

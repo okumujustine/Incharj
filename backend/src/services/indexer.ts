@@ -1,14 +1,38 @@
 import type { PoolClient } from "pg";
-import { chunkText, approximateTokenCount } from "../utils/chunker";
-import { sha256 } from "../utils/security";
-import {
-  SQL_DELETE_DOCUMENT_CHUNKS,
-  SQL_INSERT_DOCUMENT_CHUNK,
-  SQL_SELECT_DOCUMENT_HASH,
-  SQL_UPDATE_DOCUMENT_SEARCH_VECTOR,
-  SQL_UPSERT_DOCUMENT,
-} from "../sql/indexer";
+import { normalizeDocument } from "../normalization/normalizer";
+import { processChunks } from "../chunking/chunk-processor";
+import { updateSearchIndex } from "../indexing/indexer";
 import type { DocData } from "../types/indexer";
+import type { CanonicalDocumentEnvelope } from "../types/document-envelope";
+import { sha256 } from "../utils/security";
+
+/**
+ * Ingest a canonical document through the full pipeline:
+ * Normalization → Chunking → Indexing → Permissions
+ */
+export async function ingestCanonicalDocument(
+  client: PoolClient,
+  document: CanonicalDocumentEnvelope
+): Promise<"indexed" | "skipped"> {
+  // Stage 1: Normalize document
+  const normalized = await normalizeDocument(client, document);
+  if (normalized.wasSkipped) {
+    return "skipped";
+  }
+
+  // Stage 2: Chunk content
+  const content = (document.content?.trim() ?? "").replace(/\0/g, "").slice(0, 500_000);
+  await processChunks(client, content, normalized.documentId, document.orgId);
+
+  // Stage 3: Index for search
+  await updateSearchIndex(client, normalized.documentId);
+
+  // Stage 4: Validate and attach permissions
+  // TODO: Uncomment when permission resolution is ready
+  // await validateAndAttachPermissions(document.orgId, normalized.documentId, document.sourcePermissions);
+
+  return "indexed";
+}
 
 export async function ingestDocument(
   client: PoolClient,
@@ -16,35 +40,34 @@ export async function ingestDocument(
   orgId: string,
   connectorId: string
 ): Promise<"indexed" | "skipped"> {
-  const content = (docData.content?.trim() ?? "").replace(/\0/g, "").slice(0, 500_000);
-  const contentHash = sha256(`${docData.title ?? ""}::${content}`);
-
-  const existingResult = await client.query<{ content_hash: string | null }>(
-    SQL_SELECT_DOCUMENT_HASH, [connectorId, docData.external_id]
-  );
-  const existing = existingResult.rows[0];
-  if (existing?.content_hash === contentHash) return "skipped";
-
-  const wordCount = content ? content.split(/\s+/).filter(Boolean).length : 0;
-  const upsertResult = await client.query<{ id: string }>(SQL_UPSERT_DOCUMENT, [
-    orgId, connectorId, docData.external_id,
-    docData.url ?? null, docData.title ?? null, docData.kind ?? null,
-    docData.ext ?? null, docData.author_name ?? null, docData.author_email ?? null,
-    contentHash, wordCount, docData.mtime ?? null, docData.metadata ?? null,
-  ]);
-  const documentId = upsertResult.rows[0].id;
-
-  await client.query(SQL_DELETE_DOCUMENT_CHUNKS, [documentId]);
-
-  const chunks = content ? chunkText(content, 800, 100) : [];
-  for (let index = 0; index < chunks.length; index += 1) {
-    const chunk = chunks[index];
-    await client.query(SQL_INSERT_DOCUMENT_CHUNK, [
-      documentId, orgId, index, chunk, approximateTokenCount(chunk),
-    ]);
-  }
-
-  await client.query(SQL_UPDATE_DOCUMENT_SEARCH_VECTOR, [documentId]);
-
-  return "indexed";
+  return ingestCanonicalDocument(client, {
+    orgId,
+    connectorId,
+    connectorKey: "legacy",
+    sourceId: connectorId,
+    externalId: docData.external_id,
+    url: docData.url ?? null,
+    title: docData.title ?? null,
+    kind: docData.kind ?? null,
+    ext: docData.ext ?? null,
+    content: docData.content ?? null,
+    contentType: typeof docData.metadata?.mime_type === "string" ? String(docData.metadata.mime_type) : null,
+    sourcePath: null,
+    sourceLastModifiedAt:
+      typeof docData.mtime === "string"
+        ? docData.mtime
+        : docData.mtime instanceof Date
+          ? docData.mtime.toISOString()
+          : null,
+    authorName: docData.author_name ?? null,
+    authorEmail: docData.author_email ?? null,
+    checksum: sha256(`${docData.title ?? ""}::${docData.content ?? ""}`),
+    sourcePermissions: null,
+    extractionStatus: "succeeded",
+    extractionErrorCode: null,
+    extractionVersion: 1,
+    chunkingVersion: 1,
+    indexingVersion: 1,
+    metadata: docData.metadata ?? {},
+  });
 }

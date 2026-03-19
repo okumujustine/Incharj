@@ -1,6 +1,9 @@
 export const DOCUMENT_FIELDS = `
   id, org_id, connector_id, external_id, url, title, kind, ext,
-  author_name, author_email, content_hash, word_count, mtime, indexed_at, metadata
+  author_name, author_email, content_hash, checksum, content_type, source_path,
+  source_last_modified_at, source_permissions, extraction_status,
+  extraction_error_code, extraction_version, chunking_version, indexing_version,
+  word_count, mtime, indexed_at, metadata
 `;
 
 export function buildListDocumentsSql(filters: string[], limitParam: number, offsetParam: number): string {

@@ -1,6 +1,7 @@
 export const SYNC_JOB_FIELDS = `
   id, connector_id, org_id, triggered_by, status, started_at, finished_at,
-  docs_indexed, docs_skipped, docs_errored, error_message, meta, created_at
+  docs_enqueued, docs_processed, docs_indexed, docs_skipped, docs_errored,
+  error_message, meta, created_at
 `;
 
 export const SQL_INSERT_SYNC_JOB = `
@@ -24,7 +25,8 @@ export const SQL_SELECT_SYNC_JOB_BY_ID = `
 `;
 
 export const SQL_SELECT_SYNC_JOB_STREAM = `
-  SELECT id, status, docs_indexed, docs_skipped, docs_errored, error_message, started_at, finished_at
+  SELECT id, status, docs_enqueued, docs_processed, docs_indexed, docs_skipped, docs_errored,
+         error_message, started_at, finished_at
   FROM sync_jobs
   WHERE id = $1 AND org_id = $2
 `;
@@ -37,7 +39,8 @@ export function buildSyncJobsListSql(hasConnectorFilter: boolean, limitParam: nu
   const connectorFilter = hasConnectorFilter ? ` AND connector_id = $2` : "";
   return `
     SELECT id, connector_id, org_id, triggered_by, status, started_at, finished_at,
-           docs_indexed, docs_skipped, docs_errored, error_message, meta, created_at
+           docs_enqueued, docs_processed, docs_indexed, docs_skipped, docs_errored,
+           error_message, meta, created_at
     FROM sync_jobs
     WHERE org_id = $1${connectorFilter}
     ORDER BY created_at DESC
@@ -55,7 +58,45 @@ export const SQL_PICKUP_PENDING_JOB = `
 `;
 
 export const SQL_START_SYNC_JOB = `
-  UPDATE sync_jobs SET status = 'running', started_at = now() WHERE id = $1
+  UPDATE sync_jobs
+  SET status = 'running', started_at = now(), error_message = NULL
+  WHERE id = $1
+`;
+
+export const SQL_SET_SYNC_JOB_ENQUEUED = `
+  UPDATE sync_jobs
+  SET docs_enqueued = $2,
+      docs_processed = 0,
+      docs_indexed = 0,
+      docs_skipped = 0,
+      docs_errored = 0,
+      meta = jsonb_set(coalesce(meta, '{}'::jsonb), '{checkpoint}', coalesce($3::jsonb, 'null'::jsonb), true)
+  WHERE id = $1
+`;
+
+export const SQL_INCREMENT_SYNC_JOB_DOC_RESULT = `
+  UPDATE sync_jobs
+  SET docs_processed = docs_processed + 1,
+      docs_indexed = docs_indexed + $2,
+      docs_skipped = docs_skipped + $3,
+      docs_errored = docs_errored + $4
+  WHERE id = $1
+`;
+
+export const SQL_SELECT_SYNC_JOB_PROGRESS = `
+  SELECT id, status, docs_enqueued, docs_processed, docs_indexed, docs_skipped, docs_errored
+  FROM sync_jobs
+  WHERE id = $1
+`;
+
+export const SQL_COMPLETE_SYNC_JOB_IF_FINISHED = `
+  UPDATE sync_jobs
+  SET status = 'done',
+      finished_at = now(),
+      error_message = NULL
+  WHERE id = $1
+    AND status = 'running'
+    AND docs_processed >= docs_enqueued
 `;
 
 export const SQL_COMPLETE_SYNC_JOB = `
@@ -64,6 +105,8 @@ export const SQL_COMPLETE_SYNC_JOB = `
       docs_indexed = $2,
       docs_skipped = $3,
       docs_errored = $4,
+      docs_processed = $2 + $3 + $4,
+      docs_enqueued = $2 + $3 + $4,
       finished_at = now()
   WHERE id = $1
 `;
@@ -81,7 +124,7 @@ export const SQL_FAIL_SYNC_JOB_CONNECTOR_NOT_FOUND = `
 `;
 
 export const SQL_SELECT_CONNECTOR_FOR_SYNC = `
-  SELECT id, org_id, kind, credentials, config, last_synced_at
+  SELECT id, org_id, kind, credentials, config, last_synced_at, sync_cursor
   FROM connectors WHERE id = $1
 `;
 

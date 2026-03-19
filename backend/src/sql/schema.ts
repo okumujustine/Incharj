@@ -89,6 +89,8 @@ export const DDL_INITIALIZE = `
       status VARCHAR(50) NOT NULL DEFAULT 'pending',
       started_at TIMESTAMPTZ,
       finished_at TIMESTAMPTZ,
+      docs_enqueued INTEGER NOT NULL DEFAULT 0,
+      docs_processed INTEGER NOT NULL DEFAULT 0,
       docs_indexed INTEGER NOT NULL DEFAULT 0,
       docs_skipped INTEGER NOT NULL DEFAULT 0,
       docs_errored INTEGER NOT NULL DEFAULT 0,
@@ -111,8 +113,18 @@ export const DDL_INITIALIZE = `
       author_name VARCHAR(255),
       author_email VARCHAR(320),
       content_hash VARCHAR(64),
+      checksum VARCHAR(64),
       word_count INTEGER,
       mtime TIMESTAMPTZ,
+      source_last_modified_at TIMESTAMPTZ,
+      content_type VARCHAR(200),
+      source_path TEXT,
+      source_permissions JSONB,
+      extraction_status VARCHAR(40) NOT NULL DEFAULT 'succeeded',
+      extraction_error_code VARCHAR(80),
+      extraction_version INTEGER NOT NULL DEFAULT 1,
+      chunking_version INTEGER NOT NULL DEFAULT 1,
+      indexing_version INTEGER NOT NULL DEFAULT 1,
       indexed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       metadata JSONB,
       search_vector tsvector,
@@ -200,4 +212,29 @@ export const DDL_INITIALIZE = `
     );
     CREATE INDEX IF NOT EXISTS ix_workflow_runs_workflow_id ON workflow_runs(workflow_id);
     CREATE INDEX IF NOT EXISTS ix_workflow_runs_org_id ON workflow_runs(org_id);
+
+    CREATE TABLE IF NOT EXISTS connector_sync_state (
+      connector_id UUID PRIMARY KEY REFERENCES connectors(id) ON DELETE CASCADE,
+      org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      checkpoint JSONB,
+      last_sync_job_id UUID REFERENCES sync_jobs(id) ON DELETE SET NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_connector_sync_state_org_id ON connector_sync_state(org_id);
+
+    ALTER TABLE sync_jobs ADD COLUMN IF NOT EXISTS docs_enqueued INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE sync_jobs ADD COLUMN IF NOT EXISTS docs_processed INTEGER NOT NULL DEFAULT 0;
+
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS checksum VARCHAR(64);
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_last_modified_at TIMESTAMPTZ;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_type VARCHAR(200);
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_path TEXT;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_permissions JSONB;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS extraction_status VARCHAR(40) NOT NULL DEFAULT 'succeeded';
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS extraction_error_code VARCHAR(80);
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS extraction_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS chunking_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS indexing_version INTEGER NOT NULL DEFAULT 1;
+
+    UPDATE documents SET checksum = content_hash WHERE checksum IS NULL;
 `;

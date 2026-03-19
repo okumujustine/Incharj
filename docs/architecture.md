@@ -4,92 +4,294 @@ Incharj has one job: connect to external knowledge sources, index their content,
 
 ---
 
-## The core loop
+## System processes
+
+Three processes share one PostgreSQL database. They never communicate directly with each other — PostgreSQL and Redis are the only shared state.
 
 ```
-External source          Worker process              PostgreSQL
-(Google Drive,    ──►   Connector                  ┌─────────────────┐
- Notion, Slack)         listDocuments()  ──────────►│ connectors      │
-                        fetchContent()              │ sync_jobs       │
-                              │                     │ documents       │
-                              ▼                     │ document_chunks │
-                         Indexer                    └────────┬────────┘
-                         ingestDocument()                    │
-                              │                             GIN
-                              └──── search_vector ──────────►│
-                                    (pre-computed)           │
-                                                   ┌─────────▼────────┐
-                                    API ◄──────────│  Search engine   │
-                                    query          └──────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  Browser (React SPA)                                    │
+│  • TanStack Query for server state                      │
+│  • Zustand for auth token (memory only)                 │
+│  • Axios interceptor auto-refreshes expired tokens      │
+└──────────────────────┬──────────────────────────────────┘
+                       │ HTTP  (nginx → api:8000)
+                       ▼
+┌──────────────────────────────────────────────────────────┐
+│  API  ·  Fastify 5  ·  TypeScript                        │
+│                                                          │
+│  /auth          JWT issue, refresh, logout               │
+│  /orgs          Multi-tenant org management              │
+│  /connectors    OAuth setup, pause/resume/sync trigger   │
+│  /search        FTS + fuzzy query endpoint               │
+│  /documents     List indexed docs with filters           │
+│  /oauth         OAuth callback handler                   │
+└─────────┬──────────────────────┬────────────────────────┘
+          │ pg (pool 20)         │ enqueue sync job
+          ▼                      ▼
+┌──────────────────┐    ┌────────────────┐
+│   PostgreSQL 16  │    │   Redis 7      │
+│                  │    │   (BullMQ)     │
+│  users           │    │                │
+│  organizations   │    │  incharj-sync  │
+│  memberships     │    │  queue         │
+│  sessions        │    └───────┬────────┘
+│  connectors      │            │ consume jobs
+│  sync_jobs       │    ┌───────▼────────────────────────┐
+│  documents       │◄───│  Worker  ·  BullMQ consumer    │
+│  document_chunks │    │                                 │
+└──────────────────┘    │  dispatch job  (every 30s)      │
+                        │    finds due connectors          │
+                        │    enqueues "sync" jobs          │
+                        │                                 │
+                        │  sync job  (concurrency=1)       │
+                        │    runSync()                     │
+                        │      ↳ listDocuments()           │
+                        │      ↳ fetchContent()            │
+                        │      ↳ ingestDocument()          │
+                        └─────────────────────────────────┘
+                                    │ OAuth / REST
+                                    ▼
+                         ┌──────────────────────┐
+                         │  External APIs        │
+                         │  Google Drive         │
+                         │  Notion               │
+                         │  Slack                │
+                         └──────────────────────┘
 ```
-
-Three processes share the same PostgreSQL database:
-
-| Process | Role |
-|---|---|
-| **API** (Fastify) | Handles HTTP requests — auth, connectors, search, documents |
-| **Worker** (BullMQ) | Runs sync jobs — fetches, indexes, updates search vectors |
-| **Redis** | Job queue only — BullMQ stores pending and running sync jobs |
 
 ---
 
-## How a sync happens
+## How a connector sync works end to end
 
-A **dispatch job** runs every 30 seconds and finds connectors where `last_synced_at + sync_frequency < now()`. For each due connector it creates a `sync_jobs` row (status = `pending`) and enqueues a `"sync"` job to Redis.
+### 1. Connector creation and OAuth
 
-The **sync worker** (concurrency = 1) picks up the job and calls `runSync()`:
+When a user clicks "Connect Google Drive":
+
+1. Frontend calls `POST /orgs/:slug/connectors` → creates a row in `connectors` with `has_credentials = false`
+2. Frontend calls `GET /connectors/:id/oauth/authorize` → backend calls `connector.authorizeUrl(state)` and returns the Google consent URL
+3. A random `state` param is stored in `localStorage` as `oauth_state:<state>` → maps to `{ connector_id, org_slug, kind }`
+4. User approves at Google → redirected to `GET /oauth/google_drive/callback?code=…&state=…`
+5. Backend reads state from the request, calls `connector.exchangeCode(code, redirectUri)` → receives `{ access_token, refresh_token, expiry_date, ... }`
+6. Credentials encrypted with AES-GCM and stored in `connectors.credentials`. `has_credentials` set to `true`
+
+### 2. Dispatch scheduling
+
+A BullMQ repeating job named `"dispatch"` runs every 30 seconds inside the worker. It queries:
+
+```sql
+SELECT id, org_id, kind, config, sync_frequency, last_synced_at
+FROM connectors
+WHERE status NOT IN ('paused', 'error')
+  AND credentials IS NOT NULL
+  AND has_credentials = true
+  AND (
+    last_synced_at IS NULL
+    OR last_synced_at + sync_frequency::interval < now()
+  )
+```
+
+For each result it checks whether a BullMQ job already exists for that connector ID (preventing double-dispatch). If not, it:
+- Inserts a `sync_jobs` row with `status = 'pending'`, `triggered_by = 'scheduled'`
+- Enqueues a `"sync"` BullMQ job with `{ syncJobId, connectorId }` payload
+
+Manual sync (clicking "Sync now" in the UI) bypasses the schedule check and goes straight to enqueueing.
+
+### 3. Sync execution
+
+The sync worker picks up the job (concurrency = 1 — no two syncs run simultaneously):
 
 ```
-1. Decrypt OAuth credentials (AES-GCM)
-2. Refresh access token if expired
-3. connector.listDocuments()  ← async generator, incremental via last_synced_at
-4. for each doc:
-     connector.fetchContent()
-     ingestDocument()          ← own transaction, failure is isolated
-5. Update connectors.doc_count + last_synced_at
+runner.ts: runSync(connectorModel)
+  │
+  ├─ decryptCredentials(connectorModel.credentials)
+  │
+  ├─ connector.refreshCredentials()
+  │    Google: POST https://oauth2.googleapis.com/token with refresh_token
+  │    Notion/Slack: long-lived tokens, returns null (no refresh needed)
+  │
+  ├─ Build config for connector:
+  │    last_synced_at: new Date(connectorModel.last_synced_at).toISOString()
+  │    max_documents:  connectorModel.config?.max_documents ?? undefined
+  │
+  ├─ for await (const doc of connector.listDocuments()) {
+  │      content = await connector.fetchContent(doc.external_id, doc.metadata)
+  │      await ingestDocument(client, orgId, connectorId, { ...doc, content })
+  │                  ↑
+  │             own transaction
+  │  }
+  │
+  └─ UPDATE connectors SET doc_count = (SELECT count(*) ...), last_synced_at = now()
 ```
 
-See [Indexer](./indexer) for what happens inside `ingestDocument()`.
+### 4. Connector-specific fetch behaviour
+
+**Google Drive**
+- Calls Drive API with `q: modifiedTime > 'ISO_STRING'` when `last_synced_at` is set
+- Supported mime types: Google Docs (export as text), Sheets (export as CSV), Slides (export as text), PDF, plain text, Markdown, HTML, CSV
+- Files streamed via `alt=media`, capped at **2 MB** to prevent OOM on large binaries
+- PDFs: raw bytes collected into a `Buffer`, parsed with `pdf-parse` (loaded via `require()` because it's a CJS module)
+- HTML: tags stripped before indexing
+
+**Notion**
+- Uses Notion search API, 100 pages per request
+- Blocks collected recursively up to depth 5
+- Title extracted from the first property named `"title"`, `"Name"`, or `"Title"`
+- Filter: `filter.last_edited_time.after = last_synced_at`
+
+**Slack**
+- Lists all accessible channels, fetches messages 200 at a time
+- Threads fetched separately via `conversations.replies`
+- Each message indexed as `kind: "message"`, `ext: "slack"`
+- Filter: messages with `ts > last_synced_at` unix timestamp
 
 ---
 
-## How a search happens
+## How a search request works
 
 ```
-Browser → GET /orgs/:slug/search?q=product+roadmap
-              │
-              ▼
-         Stop word check  ← websearch_to_tsquery empty? → return [] immediately
-              │
-              ▼
-         FTS query        ← search_vector @@ tsq  (GIN index, no table scan)
-              │
-         total > 0? ──yes──► rank + snippet → return
-              │
-             no
-              ▼
-         Fuzzy query      ← similarity(title, q) > 0.1  (GIN trgm index)
-              │
-              ▼
-         return results
+GET /orgs/acme/search?q=product+roadmap&connector_id=uuid&limit=20&offset=0
+  │
+  ▼
+search-service.ts: fullTextSearch(orgId, options)
+  │
+  ├─ 1. Stop word check
+  │       SELECT (websearch_to_tsquery('english', 'product roadmap')::text = '') AS is_empty
+  │       → false, continue
+  │
+  ├─ 2. Build WHERE clause
+  │       d.org_id = $1
+  │       AND d.connector_id = $3   ← if connector_id filter present
+  │
+  ├─ 3. Run FTS + count in parallel
+  │       Promise.all([
+  │         buildFtsQuery(whereClause, ...)   → ranked results + snippets
+  │         buildFtsCountQuery(whereClause)   → total count (no ranking)
+  │       ])
+  │
+  ├─ 4. total > 0 ? return FTS results
+  │
+  └─ 5. total = 0 ? run fuzzy fallback
+          similarity(d.title, $2) > 0.1
+          ORDER BY raw_score DESC
 ```
 
-See [Search](./search) for the full ranking formula and scoring details.
+The response shape:
+
+```json
+{
+  "query": "product roadmap",
+  "total": 12,
+  "limit": 20,
+  "offset": 0,
+  "results": [
+    {
+      "id": "uuid",
+      "title": "Q3 Product Roadmap",
+      "url": "https://docs.google.com/document/d/...",
+      "kind": "document",
+      "ext": null,
+      "snippet": "…the <<product roadmap>> for Q3 focuses on…",
+      "score": 0.42,
+      "mtime": "2024-03-10T09:00:00Z",
+      "connector_kind": "google_drive",
+      "connector_name": "Company Drive"
+    }
+  ]
+}
+```
+
+`<<` / `>>` delimiters in the snippet are rendered as yellow highlights in the frontend.
 
 ---
 
 ## Multi-tenancy
 
-Every table that holds user data carries an `org_id` column. All queries — search, documents, connectors — are filtered by `org_id` before anything else. The API middleware resolves the org from the URL slug and verifies the caller is a member before allowing any data access.
+Every table that stores user data has an `org_id` UUID column. The enforcement happens at the API layer:
+
+```ts
+// Every org-scoped route resolves the org first
+const org = await getOrgBySlug(slug)            // 404 if not found
+const membership = await getCurrentMembership(org.id, user.id)  // 403 if not member
+```
+
+There is no row-level security in PostgreSQL — the `org_id` filter is always injected by the application. All SQL query builders in `sql/` accept `orgId` as their first parameter and always include `WHERE org_id = $1`.
+
+**Roles** enforced per request (no caching):
+- `owner` — full access, including deleting the org
+- `admin` — manage connectors and members
+- `member` — read-only: search, browse files, view connector status
 
 ---
 
-## Key constraints that shaped the design
+## Connector pause / resume
 
-**Pre-computed search vectors** — `to_tsvector()` is called at index time, not query time. Two GIN indexes (`ix_documents_search_vector`, `ix_chunks_search_vector`) let the search query skip the tokenisation step entirely.
+Pausing sets `connectors.status = 'paused'`. The dispatch job's eligibility query filters out paused connectors (`status NOT IN ('paused', 'error')`), so no new sync jobs are enqueued. Any sync already running finishes normally — pause takes effect on the next cycle.
 
-**Per-document transactions** — each call to `ingestDocument()` runs in its own `BEGIN / COMMIT`. A malformed PDF or a network hiccup on one document is counted as `docs_errored` and the sync continues.
+Resuming sets `status = 'idle'`, making the connector eligible for the next dispatch cycle.
 
-**Incremental sync at the source** — connectors filter changed documents using the source API's own query parameters (e.g. Google Drive `modifiedTime >`). Only genuinely new or changed documents reach the indexer.
+---
 
-**Content hash includes title** — `SHA-256(title::content)` means a rename with no body change still triggers re-index. Without the title in the hash, renames would be silently ignored.
+## Key design decisions and why
+
+| Decision | Why |
+|---|---|
+| BullMQ + Redis (not DB polling) | Reliable delivery, deduplication, and retry semantics without holding DB connections open in a loop |
+| Concurrency = 1 on the sync worker | Document chunks are deleted then re-inserted. Concurrent syncs on the same connector could race on this delete. |
+| GIN indexes on `search_vector` | Lets `search_vector @@ tsq` skip tokenisation at query time — the difference between milliseconds and seconds at scale |
+| `Promise.all` for FTS + count | The count query (no ranking, no headline) is cheap and can run in parallel with the main query — no extra latency |
+| Raw SQL, no ORM | All queries are in `backend/src/sql/`. Every query is readable, tunable, and version-controlled. No magic. |
+| Stop word short-circuit | Searching "the" would produce an empty tsquery → fall through to fuzzy → full table scan on title similarity. The early exit prevents this completely. |
+| Content hash includes title | `SHA-256(title::content)` so a rename-only change still triggers re-index |
+
+---
+
+## Codebase map
+
+```
+backend/src/
+├── server.ts              entry point — buildApp() + listen
+├── app.ts                 Fastify instance, plugins, route registration
+├── db.ts                  pg pool, query(), withTransaction(), initializeDatabase()
+├── config.ts              env vars with defaults
+├── errors.ts              NotFoundError, BadRequestError, ForbiddenError …
+│
+├── routes/                one file per resource
+│   ├── auth.ts
+│   ├── connectors.ts
+│   ├── oauth.ts
+│   ├── search.ts
+│   ├── documents.ts
+│   └── orgs.ts
+│
+├── middleware/auth.ts      requireCurrentUser, getCurrentMembership, requireRole
+│
+├── services/
+│   ├── indexer.ts          ingestDocument() — the core indexing pipeline
+│   └── search-service.ts   fullTextSearch() — FTS + fuzzy orchestration
+│
+├── connectors/
+│   ├── base.ts             BaseConnector abstract class
+│   ├── registry.ts         kind → class map, getConnector(), loadConnectors()
+│   ├── google-drive.ts
+│   ├── notion.ts
+│   └── slack.ts
+│
+├── workers/
+│   ├── index.ts            BullMQ Worker setup, job routing
+│   ├── scheduler.ts        dispatchDueSyncs()
+│   ├── processor.ts        processJob() — marks running/done/failed in DB
+│   └── runner.ts           runSync() — orchestrates one full connector sync
+│
+├── sql/                   all SQL as named constants or builder functions
+│   ├── schema.ts           DDL — all CREATE TABLE / CREATE INDEX
+│   ├── search.ts           buildFtsQuery, buildFuzzyQuery, buildFtsCountQuery
+│   ├── documents.ts        buildListDocumentsSql, buildCountDocumentsSql
+│   ├── connectors.ts       connector CRUD queries
+│   ├── indexer.ts          upsert + chunk insert + search_vector update queries
+│   └── …
+│
+└── utils/
+    ├── chunker.ts          chunkText(), approximateTokenCount()
+    └── security.ts         sha256(), encryptCredentials(), decryptCredentials()
+```

@@ -3,7 +3,14 @@ import { initializeDatabase, query } from "../db";
 import { loadConnectors } from "../connectors/registry";
 import { syncQueue, redisConnection } from "./queue";
 import { dispatchDueSyncs } from "./scheduler";
-import { processSyncJob } from "./processor";
+import {
+  processDocumentJob,
+  processEnumerateJob,
+  processFinalizeJob,
+  type DocumentJobData,
+  type EnumerateJobData,
+  type FinalizeJobData,
+} from "./processor";
 import { logger } from "../utils/logger";
 
 const SQL_RESET_STUCK_JOBS = `
@@ -34,8 +41,21 @@ async function main() {
         await dispatchDueSyncs();
         return;
       }
-      const { syncJobId, connectorId } = job.data as { syncJobId: string; connectorId: string };
-      await processSyncJob(syncJobId, connectorId);
+
+      if (job.name === "sync-enumerate") {
+        const { syncJobId, connectorId } = job.data as EnumerateJobData;
+        await processEnumerateJob({ syncJobId, connectorId });
+        return;
+      }
+
+      if (job.name === "sync-document") {
+        await processDocumentJob(job.data as DocumentJobData, job);
+        return;
+      }
+
+      if (job.name === "sync-finalize") {
+        await processFinalizeJob(job.data as FinalizeJobData);
+      }
     },
     {
       connection: redisConnection,
