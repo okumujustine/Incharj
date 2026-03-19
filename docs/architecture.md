@@ -50,6 +50,31 @@ sync-finalize
   `- update connector state
 ```
 
+### End-to-end flow walkthrough
+
+High-level (what happens):
+
+1. A connector becomes due and the dispatcher schedules one sync run.
+2. The enumerate stage asks the connector for document references.
+3. One document job is created for each reference.
+4. Each document job fetches content and immediately ingests that single document.
+5. The finalize stage waits for all document jobs, then updates state and checkpoint.
+
+Technical (how state changes):
+
+1. `dispatchDueSyncs()` inserts a `sync_jobs` row and enqueues `sync-enumerate`.
+2. `processEnumerateJob()` loads credentials/checkpoint, calls `plugin.enumerate()`, writes `docs_enqueued`, enqueues `sync-document` x N, then enqueues `sync-finalize`.
+3. `processDocumentJob()` calls `plugin.fetchDocument()`, builds `CanonicalDocumentEnvelope`, then calls ingestion facade.
+4. Ingestion runs stage modules in order:
+  - normalization: sanitize, checksum, dedup, document upsert
+  - chunking: delete old chunks, insert new chunks
+  - indexing: update search vector
+  - permissions: org-level fallback today, ACL expansion path ready
+5. Document counters are updated per outcome (`indexed`, `skipped`, `errored`).
+6. `processFinalizeJob()` polls until `docs_processed == docs_enqueued`, marks sync complete, stores checkpoint, updates connector metadata (`last_synced_at`, `doc_count`).
+
+See [Core: Orchestration](/core-orchestration) for stage payloads, retries, and failure semantics.
+
 Detailed stage behavior is split into core docs:
 
 - [Core: Orchestration](/core-orchestration)
