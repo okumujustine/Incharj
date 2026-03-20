@@ -16,6 +16,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Architecture', link: '/architecture' },
+      { text: 'Feature Ideas', link: '/feature-ideas' },
       { text: 'Diagram', link: '/architecture-diagram.html', target: '_blank' },
     ],
 
@@ -32,6 +33,7 @@ export default defineConfig({
           { text: 'Core: Indexing', link: '/core-indexing' },
           { text: 'Core: Permissions', link: '/core-permissions' },
           { text: 'Search', link: '/search' },
+          { text: 'Feature Ideas', link: '/feature-ideas' },
           { text: 'Authentication', link: '/auth' },
         ],
       },

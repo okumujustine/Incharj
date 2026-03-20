@@ -36,6 +36,12 @@ features:
     link: /search
     linkText: Read
 
+  - icon: 🧪
+    title: Feature Ideas
+    details: "Roadmap for semantic fallback, hybrid retrieval fusion, and a future RAG endpoint with citations."
+    link: /feature-ideas
+    linkText: Read
+
   - icon: 🔐
     title: Authentication
     details: "JWT + rotating refresh tokens for users. AES-GCM encrypted OAuth credentials for connectors."
