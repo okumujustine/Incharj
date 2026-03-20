@@ -1,1 +1,0 @@
-import{_ as i,o as a,c as n,ag as t}from"./chunks/framework.DAvaMl8U.js";const E=JSON.parse('{"title":"Search","description":"","frontmatter":{},"headers":[],"relativePath":"search.md","filePath":"search.md"}'),e={name:"search.md"};function h(l,s,p,k,d,r){return a(),n("div",null,[...s[0]||(s[0]=[t("",82)])])}const c=i(e,[["render",h]]);export{E as __pageData,c as default};
