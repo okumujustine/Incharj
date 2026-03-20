@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const connectorCreateSchema = z.object({
-  kind: z.string(),
+  kind: z.literal("google_drive"),
   name: z.string(),
   config: z.record(z.any()).nullable().optional(),
   sync_frequency: z.string().default("1 hour"),

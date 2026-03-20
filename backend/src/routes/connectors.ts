@@ -16,6 +16,8 @@ import { SQL_INSERT_SYNC_JOB } from "../sql/sync-jobs";
 import { syncQueue } from "../workers/queue";
 import { getOrgBySlug } from "../sql/orgs";
 import { mapConnector, mapSyncJob } from "../utils/serialization";
+import { withTransaction } from "../db";
+import { embedConnector } from "../services/embedding-service";
 
 export default async function connectorRoutes(api: FastifyInstance) {
   api.get("/orgs/:slug/connectors", { preHandler: requireCurrentUser }, async (request) => {
@@ -128,5 +130,16 @@ export default async function connectorRoutes(api: FastifyInstance) {
     const result = await query(SQL_RESUME_CONNECTOR, [connectorId, organization.id]);
     if (!result.rowCount) throw new NotFoundError("Connector not found");
     return mapConnector(result.rows[0]);
+  });
+
+  api.post("/connectors/:connectorId/embed", { preHandler: requireCurrentUser }, async (request) => {
+    const currentUser = getCurrentUser(request);
+    const { connectorId } = request.params as { connectorId: string };
+    const { org } = request.query as { org: string };
+    const organization = await getOrgBySlug(org);
+    await getCurrentMembership(org, currentUser.id);
+    await getConnectorOr404(connectorId, organization.id);
+
+    return withTransaction((client) => embedConnector(client, organization.id, connectorId));
   });
 }

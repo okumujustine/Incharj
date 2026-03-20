@@ -25,16 +25,6 @@ const CONNECTOR_CATALOG = [
     label: 'Google Drive',
     description: 'Index documents, spreadsheets, and presentations from your Drive.',
   },
-  {
-    kind: 'notion' as const,
-    label: 'Notion',
-    description: 'Index pages, databases, and wikis from your workspace.',
-  },
-  {
-    kind: 'slack' as const,
-    label: 'Slack',
-    description: 'Index messages and threads from your channels.',
-  },
 ]
 
 interface ConnectorTileProps {
@@ -199,7 +189,7 @@ export function ConnectorsPage() {
   })
 
   const connectMutation = useMutation({
-    mutationFn: async (kind: 'google_drive' | 'notion' | 'slack') => {
+    mutationFn: async (kind: 'google_drive') => {
       const catalog = CONNECTOR_CATALOG.find((c) => c.kind === kind)!
       // Reuse existing incomplete connector or create a new one
       const existing = connectorsQuery.data?.find(

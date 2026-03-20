@@ -23,7 +23,8 @@ export function AcceptInvitePage() {
     async function accept() {
       try {
         const data = await authService.acceptInvite(token!)
-        setAuth(data.user, data.access_token)
+        const resolvedUser = data.user ?? await authService.me()
+        setAuth(resolvedUser, data.access_token)
         setStatus('success')
         setTimeout(() => navigate('/orgs'), 2000)
       } catch (err: unknown) {

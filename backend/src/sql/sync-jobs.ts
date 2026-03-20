@@ -70,7 +70,12 @@ export const SQL_SET_SYNC_JOB_ENQUEUED = `
       docs_indexed = 0,
       docs_skipped = 0,
       docs_errored = 0,
-      meta = jsonb_set(coalesce(meta, '{}'::jsonb), '{checkpoint}', coalesce($3::jsonb, 'null'::jsonb), true)
+      meta = jsonb_set(
+        coalesce(meta, '{}'::jsonb) || coalesce($4::jsonb, '{}'::jsonb),
+        '{checkpoint}',
+        coalesce($3::jsonb, 'null'::jsonb),
+        true
+      )
   WHERE id = $1
 `;
 

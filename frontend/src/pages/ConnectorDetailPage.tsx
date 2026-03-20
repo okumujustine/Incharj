@@ -12,6 +12,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
+  Sparkles,
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { connectorsService } from '../services/connectors'
@@ -81,6 +82,15 @@ function SyncJobRow({ job }: { job: SyncJob }) {
   const startedFull = job.started_at ? format(new Date(job.started_at), 'MMM d yyyy, HH:mm:ss') : '—'
   const finishedFull = job.finished_at ? format(new Date(job.finished_at), 'MMM d yyyy, HH:mm:ss') : '—'
   const duration = formatDuration(job.started_at, job.finished_at)
+  const capped = typeof job.meta?.documents_capped === 'number'
+    ? Number(job.meta.documents_capped)
+    : null
+  const truncated = typeof job.meta?.documents_truncated === 'number'
+    ? Number(job.meta.documents_truncated)
+    : null
+  const capApplied = typeof job.meta?.document_limit_applied === 'number'
+    ? Number(job.meta.document_limit_applied)
+    : null
 
   return (
     <div className="border-b border-border last:border-0">
@@ -149,6 +159,21 @@ function SyncJobRow({ job }: { job: SyncJob }) {
           </div>
           <div />
 
+          {(capped !== null || capApplied !== null || truncated !== null) && (
+            <>
+              <div>
+                <p className="text-2xs text-text-muted font-mono mb-0.5">Capped for this run</p>
+                <p className="text-xs text-warning font-mono">
+                  {capped ?? job.docs_enqueued} docs
+                </p>
+              </div>
+              <div>
+                <p className="text-2xs text-text-muted font-mono mb-0.5">Dropped by cap</p>
+                <p className="text-xs text-warning font-mono">{truncated ?? 0} docs</p>
+              </div>
+            </>
+          )}
+
           <div>
             <p className="text-2xs text-text-muted font-mono mb-0.5">Indexed</p>
             <p className="text-xs text-success font-mono">{job.docs_indexed} docs</p>
@@ -196,7 +221,7 @@ function SyncLimitCard({
   }, [currentLimit])
 
   const parsed = value.trim() === '' ? null : parseInt(value, 10)
-  const isValid = value.trim() === '' || (!isNaN(parsed!) && parsed! > 0)
+  const isValid = value.trim() === '' || (!isNaN(parsed!) && parsed! > 0 && parsed! <= 5)
   const isDirty = (parsed ?? null) !== (currentLimit ?? null)
 
   return (
@@ -204,16 +229,17 @@ function SyncLimitCard({
       <div className="px-5 py-3 border-b border-border">
         <h2 className="text-sm font-semibold text-text-primary">Sync limit</h2>
         <p className="text-xs text-text-muted mt-0.5">
-          Cap how many documents are fetched per sync. Leave empty for no limit.
+          Google Drive enforces a hard cap of 5 documents per sync. Set a value from 1 to 5.
         </p>
       </div>
       <div className="p-5 flex items-center gap-3">
         <input
           type="number"
           min={1}
+          max={5}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="No limit"
+          placeholder="5"
           className="w-36 h-8 bg-bg-elevated text-text-primary text-sm border border-border rounded px-3 focus:outline-none focus:border-accent placeholder:text-text-muted"
         />
         <span className="text-xs text-text-muted">documents per sync</span>
@@ -227,7 +253,7 @@ function SyncLimitCard({
           </Button>
         )}
         {!isValid && (
-          <span className="text-xs text-error">Must be a positive number</span>
+          <span className="text-xs text-error">Must be a number between 1 and 5</span>
         )}
       </div>
     </div>
@@ -278,6 +304,14 @@ export function ConnectorDetailPage() {
       connectorsService.update(orgSlug!, id!, { config }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] }),
+  })
+
+  const embedMutation = useMutation({
+    mutationFn: () => connectorsService.embed(orgSlug!, id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] })
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs', orgSlug, id] })
+    },
   })
 
 
@@ -334,6 +368,16 @@ export function ConnectorDetailPage() {
               disabled={connector.status === 'paused'}
             >
               Sync now
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => embedMutation.mutate()}
+              isLoading={embedMutation.isPending}
+              leftIcon={<Sparkles size={12} />}
+              disabled={connector.status === 'paused'}
+            >
+              Embed indexed
             </Button>
           </div>
         }

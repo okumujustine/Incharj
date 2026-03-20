@@ -66,18 +66,21 @@ The database schema is created automatically on first startup (`db.ts` calls `in
 | `FRONTEND_URL` | Yes | Used for OAuth redirect URIs, e.g. `http://localhost:3000` |
 | `GOOGLE_CLIENT_ID` | Optional | Google Drive connector |
 | `GOOGLE_CLIENT_SECRET` | Optional | Google Drive connector |
-| `NOTION_CLIENT_ID` | Optional | Notion connector |
-| `NOTION_CLIENT_SECRET` | Optional | Notion connector |
-| `SLACK_CLIENT_ID` | Optional | Slack connector |
-| `SLACK_CLIENT_SECRET` | Optional | Slack connector |
+| `SEMANTIC_SEARCH_ENABLED` | Optional | Enable semantic reranking and embedding generation (`true`/`false`) |
+| `EMBEDDING_PROVIDER` | Optional | Embedding backend provider (`openai` today) |
+| `EMBEDDING_MODEL` | Optional | Embedding model name (default: `text-embedding-3-small`) |
+| `EMBEDDING_DIMENSIONS` | Optional | Embedding dimension count (default: `1536`) |
+| `EMBEDDING_BATCH_SIZE` | Optional | Max texts per embedding API call (default: `64`) |
+| `EMBEDDING_MAX_ATTEMPTS` | Optional | Retry attempts for embedding API calls (default: `4`) |
+| `EMBEDDING_RETRY_BASE_DELAY_MS` | Optional | Base backoff delay for embedding retries (default: `300`) |
+| `OPENAI_API_KEY` | Optional | OpenAI API key used when provider is `openai` |
+| `OPENAI_BASE_URL` | Optional | OpenAI-compatible base URL |
 
 Connectors with missing credentials simply cannot be created — the rest of the system works fine without them.
 
 ---
 
 ## Setting up OAuth apps
-
-You only need to configure the connectors you plan to use.
 
 ### Google Drive
 
@@ -94,23 +97,6 @@ You only need to configure the connectors you plan to use.
    - (For production: `https://yourdomain.com/oauth/google_drive/callback`)
 5. Copy **Client ID** → `GOOGLE_CLIENT_ID`, **Client secret** → `GOOGLE_CLIENT_SECRET`
 
-### Notion
-
-1. Go to [Notion Developers](https://developers.notion.com/) → **New integration** (or use existing)
-2. Type: **Public** (required for OAuth — private integrations don't support user OAuth flow)
-3. Redirect URI: `http://localhost:3000/oauth/notion/callback`
-4. Capabilities: **Read content**
-5. Copy **OAuth client ID** → `NOTION_CLIENT_ID`, **OAuth client secret** → `NOTION_CLIENT_SECRET`
-
-### Slack
-
-1. Go to [Slack API](https://api.slack.com/apps) → **Create New App → From scratch**
-2. **OAuth & Permissions → Redirect URLs**: add `http://localhost:3000/oauth/slack/callback`
-3. **OAuth & Permissions → Bot Token Scopes**: add
-   - `channels:history`, `channels:read`
-   - `groups:history`, `groups:read`
-   - `users:read`
-4. **Basic Information** → copy **Client ID** → `SLACK_CLIENT_ID`, **Client Secret** → `SLACK_CLIENT_SECRET`
 
 ---
 
@@ -126,7 +112,7 @@ This creates a `users` row and a default `organizations` row. You are automatica
 
 ### 2. Connect a data source
 
-In the sidebar → **Connectors** → **Add connector** → choose Google Drive, Notion, or Slack.
+In the sidebar → **Connectors** → **Add connector** → choose Google Drive.
 
 The OAuth flow opens the provider's consent screen in a new window. After approving:
 - Credentials are encrypted and stored in `connectors.credentials`
@@ -148,10 +134,31 @@ Large workspaces (thousands of documents) can take several minutes on the first 
 
 Once the sync is done, open the search bar and type. Results should appear immediately.
 
+### 5. Backfill embeddings (manual)
+
+If documents were indexed before `OPENAI_API_KEY` and semantic settings were enabled, use the connector detail action:
+
+- Open **Connectors**
+- Open a connector
+- Click **Embed indexed**
+
+This embeds only chunks that do not already have vectors. Re-running the action is safe and mostly a no-op once all chunks are embedded.
+
+Equivalent API endpoints:
+
+- `POST /api/v1/connectors/:connectorId/embed?org=:orgSlug` (connector scope)
+- `POST /api/v1/documents/:documentId/embed?org=:orgSlug` (single document)
+- `POST /api/v1/orgs/:orgSlug/embed` (organization backfill)
+
 If no results come back:
 - Check `sync_jobs` — did the job complete (`status = 'done'`)?
 - Check `docs_errored` — were documents failing to fetch?
 - Run `SELECT count(*) FROM documents;` to confirm rows were written
+
+If semantic ranking is not reflected:
+- Check `SELECT count(*) FROM document_chunks WHERE embedding IS NOT NULL;`
+- Check `SELECT count(*) FROM embedding_cache;`
+- Run **Embed indexed** once for existing indexed documents
 
 ---
 

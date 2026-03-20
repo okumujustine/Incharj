@@ -1,10 +1,13 @@
 # Search
 
-The search engine lives in `backend/src/services/search-service.ts`. It receives a plain-text query from the API and returns ranked, paginated results with highlighted snippets. It never calls an external service — everything runs inside PostgreSQL.
+The search engine lives in `backend/src/services/search-service.ts`. It receives a plain-text query from the API and returns ranked, paginated results with highlighted snippets. Ranking is hybrid:
+
+- Lexical retrieval from PostgreSQL FTS/trigram indexes
+- Semantic rerank from chunk embeddings (query embedding is cached and only fetched externally on cache miss)
 
 ---
 
-## Three-tier strategy
+## Retrieval strategy
 
 ```
 query string
@@ -34,8 +37,18 @@ query string
  │  similarity(title, q) > 0.1                 │
  │  GIN trgm index on title                    │
  │  Catches typos, partial words               │
+ └──────────────────┬──────────────────────────┘
+                    │ results
+                    ▼
+ ┌─────────────────────────────────────────────┐
+ │ Hybrid semantic rerank                      │
+ │                                             │
+ │ query embedding + best chunk embedding/doc  │
+ │ final score = 0.6 lexical + 0.4 semantic    │
  └─────────────────────────────────────────────┘
 ```
+
+The rerank stage is skipped automatically when semantic search is disabled or embeddings are missing.
 
 ---
 

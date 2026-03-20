@@ -26,7 +26,7 @@ export interface Membership {
 export interface Connector {
   id: string
   org_id: string
-  kind: 'google_drive' | 'notion' | 'slack'
+  kind: 'google_drive'
   name: string
   status: 'idle' | 'syncing' | 'error' | 'paused'
   last_synced_at: string | null
@@ -43,10 +43,13 @@ export interface SyncJob {
   triggered_by: string
   started_at: string | null
   finished_at: string | null
+  docs_enqueued: number
+  docs_processed: number
   docs_indexed: number
   docs_skipped: number
   docs_errored: number
   error_message: string | null
+  meta?: Record<string, unknown> | null
 }
 
 export interface SearchResult {
@@ -117,6 +120,7 @@ export interface AuthResponse {
   access_token: string
   token_type: string
   expires_in: number
+  user?: User
 }
 
 export interface SearchFilters {

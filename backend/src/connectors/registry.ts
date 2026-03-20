@@ -15,8 +15,6 @@ export function getConnectorProvider(kind: string): ConnectorProvider {
 
 export async function loadConnectors() {
   await Promise.all([
-    import("./google-drive"),
-    import("./notion"),
-    import("./slack")
+    import("./google-drive")
   ]);
 }

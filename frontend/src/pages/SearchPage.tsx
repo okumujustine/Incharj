@@ -403,8 +403,7 @@ export function SearchPage() {
               Search your knowledge base
             </h2>
             <p className="text-sm text-text-muted max-w-sm">
-              Type a query to search across all connected sources — Google Drive,
-              Notion, Slack, and more.
+              Type a query to search across your connected Google Drive knowledge.
             </p>
             <div className="flex items-center gap-1.5 mt-6 text-xs text-text-muted font-mono border border-border rounded px-3 py-1.5">
               <span className="bg-bg-elevated border border-border rounded px-1.5 py-0.5 text-text-secondary">⌘K</span>

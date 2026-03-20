@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { chunkText, approximateTokenCount } from "../utils/chunker";
 import { SQL_DELETE_DOCUMENT_CHUNKS, SQL_INSERT_DOCUMENT_CHUNK } from "../sql/indexer";
+import { embedBatchCached } from "../ai/embedder";
 
 /**
  * ChunkProcessor handles text chunking and persistence.
@@ -30,6 +31,10 @@ export async function processChunks(
   const chunks = content ? chunkText(content, 800, 100) : [];
   const processedChunks: ProcessedChunk[] = [];
 
+  const embeddings = chunks.length > 0
+    ? await embedBatchCached(chunks, client)
+    : [];
+
   // Insert each chunk and track metadata
   for (let index = 0; index < chunks.length; index += 1) {
     const text = chunks[index];
@@ -41,6 +46,7 @@ export async function processChunks(
       index,
       text,
       tokenCount,
+      embeddings[index] ? JSON.stringify(embeddings[index]) : null,
     ]);
 
     processedChunks.push({

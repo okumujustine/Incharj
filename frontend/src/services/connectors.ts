@@ -2,7 +2,7 @@ import apiClient from './api'
 import type { Connector, SyncJob } from '../types'
 
 interface CreateConnectorPayload {
-  kind: 'google_drive' | 'notion' | 'slack'
+  kind: 'google_drive'
   name: string
   credentials?: Record<string, string>
 }
@@ -10,6 +10,13 @@ interface CreateConnectorPayload {
 interface UpdateConnectorPayload {
   name?: string
   config?: Record<string, unknown>
+}
+
+interface EmbedConnectorResponse {
+  totalDocuments: number
+  embeddedDocuments: number
+  failedDocuments: number
+  totalChunks: number
 }
 
 export const connectorsService = {
@@ -60,6 +67,15 @@ export const connectorsService = {
     return response.data
   },
 
+  async embed(orgSlug: string, connectorId: string): Promise<EmbedConnectorResponse> {
+    const response = await apiClient.post<EmbedConnectorResponse>(
+      `/connectors/${connectorId}/embed`,
+      null,
+      { params: { org: orgSlug } }
+    )
+    return response.data
+  },
+
   async pause(orgSlug: string, connectorId: string): Promise<Connector> {
     const response = await apiClient.post<Connector>(
       `/connectors/${connectorId}/pause`,
@@ -88,7 +104,7 @@ export const connectorsService = {
 
   async getOAuthUrl(
     orgSlug: string,
-    kind: 'google_drive' | 'notion' | 'slack',
+    kind: 'google_drive',
     connectorId?: string
   ): Promise<{ url: string; state: string }> {
     const params: Record<string, string> = { org: orgSlug }

@@ -1,10 +1,13 @@
 import type { PoolClient } from "pg";
 import type { SearchOptions, SearchResult, SearchResponse } from "../types/search";
+import { cosineSimilarity, getEmbeddingProvider } from "../ai";
+import { embedOneCached } from "../ai/embedder";
 import {
   buildFtsCountQuery,
   buildFtsQuery,
   buildFuzzyCountQuery,
   buildFuzzyQuery,
+  SQL_SELECT_CHUNK_EMBEDDINGS_BY_DOC_IDS,
 } from "../sql/search";
 
 
@@ -47,6 +50,77 @@ function mapRow(row: Record<string, unknown>): SearchResult {
   };
 }
 
+function parseEmbedding(value: unknown): number[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.filter((item): item is number => typeof item === "number");
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed)
+        ? parsed.filter((item): item is number => typeof item === "number")
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+async function applySemanticRerank(
+  client: PoolClient,
+  options: SearchOptions,
+  results: SearchResult[]
+): Promise<SearchResult[]> {
+  if (results.length === 0) return results;
+
+  const provider = getEmbeddingProvider();
+  if (!provider) return results;
+
+  const queryEmbedding = await embedOneCached(options.query, client);
+  if (!queryEmbedding.length) return results;
+
+  const docIds = results.map((row) => row.id);
+  const embeddingRows = await client.query<{
+    document_id: string;
+    content: string;
+    embedding: unknown;
+  }>(SQL_SELECT_CHUNK_EMBEDDINGS_BY_DOC_IDS, [docIds]);
+
+  const bestChunkByDoc = new Map<string, { similarity: number; content: string }>();
+  for (const row of embeddingRows.rows) {
+    const embedding = parseEmbedding(row.embedding);
+    if (!embedding.length || embedding.length !== queryEmbedding.length) continue;
+
+    const similarity = cosineSimilarity(queryEmbedding, embedding);
+    const best = bestChunkByDoc.get(row.document_id);
+    if (!best || similarity > best.similarity) {
+      bestChunkByDoc.set(row.document_id, { similarity, content: row.content });
+    }
+  }
+
+  const lexicalMax = Math.max(...results.map((row) => row.score), 0);
+  if (lexicalMax <= 0) return results;
+
+  const reranked = results.map((row) => {
+    const semantic = bestChunkByDoc.get(row.id);
+    const lexicalNorm = row.score / lexicalMax;
+    const semanticNorm = semantic ? Math.max(0, Math.min(1, (semantic.similarity + 1) / 2)) : 0;
+    const hybridScore = lexicalNorm * 0.6 + semanticNorm * 0.4;
+
+    return {
+      ...row,
+      score: hybridScore,
+      snippet: semantic ? semantic.content.slice(0, 320) : row.snippet,
+    };
+  });
+
+  return reranked.sort((a, b) => b.score - a.score);
+}
+
 async function ftSearch(client: PoolClient, options: SearchOptions): Promise<SearchResponse | null> {
   const { values, whereClause } = buildFilters(options);
   const limit = options.limit ?? 20;
@@ -65,7 +139,10 @@ async function ftSearch(client: PoolClient, options: SearchOptions): Promise<Sea
   const total = countResult.rows[0]?.total ?? 0;
   if (total === 0) return null;
 
-  return { total, results: results.rows.map(mapRow), query: options.query, offset, limit };
+  const mappedResults = results.rows.map(mapRow);
+  const rerankedResults = await applySemanticRerank(client, options, mappedResults);
+
+  return { total, results: rerankedResults, query: options.query, offset, limit };
 }
 
 async function fuzzySearch(client: PoolClient, options: SearchOptions): Promise<SearchResponse> {
@@ -83,9 +160,12 @@ async function fuzzySearch(client: PoolClient, options: SearchOptions): Promise<
     client.query<{ total: number }>(countSql, countValues),
   ]);
 
+  const mappedResults = results.rows.map(mapRow);
+  const rerankedResults = await applySemanticRerank(client, options, mappedResults);
+
   return {
     total: countResult.rows[0]?.total ?? 0,
-    results: results.rows.map(mapRow),
+    results: rerankedResults,
     query: options.query,
     offset,
     limit,

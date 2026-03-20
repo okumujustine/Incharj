@@ -102,3 +102,10 @@ export function buildFuzzyCountQuery(whereClause: string): string {
       AND similarity(coalesce(d.title, ''), $2) > 0.1;
   `;
 }
+
+export const SQL_SELECT_CHUNK_EMBEDDINGS_BY_DOC_IDS = `
+  SELECT document_id, content, embedding
+  FROM document_chunks
+  WHERE document_id = ANY($1::uuid[])
+    AND embedding IS NOT NULL
+`;

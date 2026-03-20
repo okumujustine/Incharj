@@ -12,7 +12,16 @@ Source modules:
 
 ## Job topology
 
-The worker runs one queue with three sync stages:
+The worker runtime uses two queues:
+
+1. `incharj-sync` (orchestration)
+  - `dispatch`
+  - `sync-enumerate`
+  - `sync-finalize`
+2. `incharj-sync-documents` (document ingestion)
+  - `sync-document`
+
+Sync stages:
 
 1. `sync-enumerate`:
    - Loads connector + credentials
@@ -30,6 +39,19 @@ The worker runs one queue with three sync stages:
    - Completes sync job row
    - Persists checkpoint and credentials
    - Updates connector state (`last_synced_at`, `doc_count`)
+
+### Connector-level cap
+
+Google Drive enforces a hard cap of 5 refs per enumerate call at the connector API boundary.
+
+- Cap is enforced inside `google-drive.ts` by `parseMaxDocuments(...)`.
+- Connector config `max_documents` is normalized to `1..5`.
+- If not provided, default is 5.
+- The sync job metadata stores:
+  - `documents_enumerated`
+  - `documents_capped`
+  - `documents_truncated`
+  - `document_limit_applied`
 
 Dispatching is done by a repeatable `dispatch` job every 30 seconds.
 
@@ -189,3 +211,15 @@ These payloads are the stage boundary contract.
 - Finalize stage is state consistency heavy.
 
 By splitting them, each stage can scale, retry, and fail independently.
+
+---
+
+## Manual embedding backfill
+
+Embeddings can be generated independently of a full sync via API routes:
+
+- `POST /connectors/:connectorId/embed?org=:orgSlug`
+- `POST /documents/:documentId/embed?org=:orgSlug`
+- `POST /orgs/:orgSlug/embed`
+
+Backfill reads existing `document_chunks` rows and only writes embeddings for chunks where `embedding IS NULL`. This allows safe repeated runs without reprocessing already embedded chunks.

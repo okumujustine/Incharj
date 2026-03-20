@@ -5,9 +5,11 @@ The connector layer is a provider-based plugin system.
 Source modules:
 - `backend/src/connectors/plugin-types.ts`
 - `backend/src/connectors/registry.ts`
-- `backend/src/connectors/google-drive.ts`
-- `backend/src/connectors/notion.ts`
-- `backend/src/connectors/slack.ts`
+- `backend/src/connectors/google-drive/index.ts`
+- `backend/src/connectors/google-drive/config.ts`
+- `backend/src/connectors/google-drive/auth.ts`
+- `backend/src/connectors/google-drive/enumerate.ts`
+- `backend/src/connectors/google-drive/fetch.ts`
 
 ---
 

@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
+import { withTransaction } from "../db";
 import { query } from "../db";
 import { NotFoundError } from "../errors";
 import { getCurrentMembership, getCurrentUser, requireCurrentUser } from "../middleware/auth";
 import { SQL_DELETE_DOCUMENT, SQL_SELECT_DOCUMENT_BY_ID, SQL_SELECT_DOCUMENT_CHUNKS, buildListDocumentsSql, buildCountDocumentsSql } from "../sql/documents";
 import { getOrgBySlug } from "../sql/orgs";
 import { mapDocument } from "../utils/serialization";
+import { embedDocument, embedOrganization } from "../services/embedding-service";
 
 export default async function documentRoutes(api: FastifyInstance) {
   api.get("/documents", { preHandler: requireCurrentUser }, async (request) => {
@@ -64,5 +66,30 @@ export default async function documentRoutes(api: FastifyInstance) {
     const result = await query(SQL_DELETE_DOCUMENT, [documentId, organization.id]);
     if (!result.rowCount) throw new NotFoundError("Document not found");
     reply.status(204).send();
+  });
+
+  api.post("/documents/:documentId/embed", { preHandler: requireCurrentUser }, async (request) => {
+    const currentUser = getCurrentUser(request);
+    const { documentId } = request.params as { documentId: string };
+    const { org } = request.query as { org: string };
+    const organization = await getOrgBySlug(org);
+    await getCurrentMembership(org, currentUser.id);
+
+    // Verify document exists and belongs to org
+    const docResult = await query(SQL_SELECT_DOCUMENT_BY_ID, [documentId, organization.id]);
+    if (!docResult.rows[0]) throw new NotFoundError("Document not found");
+
+    // Embed document in transaction
+    return withTransaction((client) => embedDocument(client, documentId, organization.id));
+  });
+
+  api.post("/orgs/:orgSlug/embed", { preHandler: requireCurrentUser }, async (request) => {
+    const currentUser = getCurrentUser(request);
+    const { orgSlug } = request.params as { orgSlug: string };
+    const organization = await getOrgBySlug(orgSlug);
+    await getCurrentMembership(orgSlug, currentUser.id);
+
+    // Embed all documents in organization in transaction
+    return withTransaction((client) => embedOrganization(client, organization.id));
   });
 }

@@ -15,7 +15,7 @@ import {
   SQL_SET_SYNC_JOB_ENQUEUED,
   SQL_START_SYNC_JOB,
 } from "../sql/sync-jobs";
-import { syncQueue } from "./queue";
+import { documentQueue, syncQueue } from "./queue";
 import { SQL_SELECT_CONNECTOR_CHECKPOINT, SQL_UPSERT_CONNECTOR_CHECKPOINT } from "../sql/checkpoints";
 import { createLogger } from "../utils/logger";
 import {
@@ -149,16 +149,27 @@ export async function processEnumerateJob(data: EnumerateJobData): Promise<void>
       checkpoint,
     });
 
+    const refs = enumeration.refs;
+
     await query(SQL_SET_SYNC_JOB_ENQUEUED, [
       syncJobId,
-      enumeration.refs.length,
+      refs.length,
       JSON.stringify(enumeration.nextCheckpoint),
+      JSON.stringify({
+        documents_enumerated: enumeration.refs.length,
+        documents_capped: refs.length,
+        documents_truncated: 0,
+        document_limit_applied:
+          typeof validatedConfig.max_documents === "number" && validatedConfig.max_documents > 0
+            ? validatedConfig.max_documents
+            : null,
+      }),
     ]);
 
     const retryPolicy = provider.manifest.retryPolicy;
-    for (let index = 0; index < enumeration.refs.length; index += 1) {
-      const ref = enumeration.refs[index];
-      await syncQueue.add(
+    for (let index = 0; index < refs.length; index += 1) {
+      const ref = refs[index];
+      await documentQueue.add(
         "sync-document",
         { syncJobId, connectorId, ref } as DocumentJobData,
         {
@@ -338,7 +349,7 @@ export async function processFinalizeJob(data: FinalizeJobData): Promise<void> {
       "sync-finalize",
       data,
       {
-        jobId: `sync-finalize-${syncJobId}`,
+        jobId: `sync-finalize-${syncJobId}-${Date.now()}`,
         delay: 2_000,
         removeOnComplete: true,
       }

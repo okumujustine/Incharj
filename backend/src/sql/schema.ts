@@ -142,6 +142,7 @@ export const DDL_INITIALIZE = `
       chunk_index INTEGER NOT NULL,
       content TEXT NOT NULL,
       token_count INTEGER,
+      embedding JSONB,
       search_vector tsvector,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       CONSTRAINT uq_chunk_doc_idx UNIQUE (document_id, chunk_index)
@@ -222,6 +223,16 @@ export const DDL_INITIALIZE = `
     );
     CREATE INDEX IF NOT EXISTS ix_connector_sync_state_org_id ON connector_sync_state(org_id);
 
+    CREATE TABLE IF NOT EXISTS embedding_cache (
+      cache_key TEXT PRIMARY KEY,
+      provider VARCHAR(64) NOT NULL,
+      model VARCHAR(120) NOT NULL,
+      dimensions INTEGER NOT NULL,
+      embedding JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_embedding_cache_updated_at ON embedding_cache(updated_at);
+
     ALTER TABLE sync_jobs ADD COLUMN IF NOT EXISTS docs_enqueued INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE sync_jobs ADD COLUMN IF NOT EXISTS docs_processed INTEGER NOT NULL DEFAULT 0;
 
@@ -237,4 +248,6 @@ export const DDL_INITIALIZE = `
     ALTER TABLE documents ADD COLUMN IF NOT EXISTS indexing_version INTEGER NOT NULL DEFAULT 1;
 
     UPDATE documents SET checksum = content_hash WHERE checksum IS NULL;
+
+  ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding JSONB;
 `;

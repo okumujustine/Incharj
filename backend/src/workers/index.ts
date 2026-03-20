@@ -1,7 +1,8 @@
 import { Worker } from "bullmq";
 import { initializeDatabase, query } from "../db";
+import { config } from "../config";
 import { loadConnectors } from "../connectors/registry";
-import { syncQueue, redisConnection } from "./queue";
+import { documentQueue, syncQueue, redisConnection } from "./queue";
 import { dispatchDueSyncs } from "./scheduler";
 import {
   processDocumentJob,
@@ -34,7 +35,7 @@ async function main() {
     removeOnComplete: true,
   });
 
-  const worker = new Worker(
+  const orchestrationWorker = new Worker(
     "incharj-sync",
     async (job) => {
       if (job.name === "dispatch") {
@@ -48,14 +49,12 @@ async function main() {
         return;
       }
 
-      if (job.name === "sync-document") {
-        await processDocumentJob(job.data as DocumentJobData, job);
+      if (job.name === "sync-finalize") {
+        await processFinalizeJob(job.data as FinalizeJobData);
         return;
       }
 
-      if (job.name === "sync-finalize") {
-        await processFinalizeJob(job.data as FinalizeJobData);
-      }
+      logger.warn({ jobName: job.name }, "orchestration worker received unsupported job");
     },
     {
       connection: redisConnection,
@@ -65,11 +64,57 @@ async function main() {
     }
   );
 
-  worker.on("failed", (job, err) => {
-    logger.error({ jobId: job?.id, jobName: job?.name, err }, "bullmq job failed");
+  const documentWorker = new Worker(
+    "incharj-sync-documents",
+    async (job) => {
+      if (job.name === "sync-document") {
+        await processDocumentJob(job.data as DocumentJobData, job);
+        return;
+      }
+
+      logger.warn({ jobName: job.name }, "document worker received unsupported job");
+    },
+    {
+      connection: redisConnection,
+      concurrency: Math.max(1, config.documentWorkerConcurrency),
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 100 },
+    }
+  );
+
+  orchestrationWorker.on("failed", (job, err) => {
+    logger.error({ worker: "orchestration", jobId: job?.id, jobName: job?.name, err }, "bullmq job failed");
   });
 
-  logger.info("worker started");
+  documentWorker.on("failed", (job, err) => {
+    logger.error({ worker: "document", jobId: job?.id, jobName: job?.name, err }, "bullmq job failed");
+  });
+
+  await documentQueue.waitUntilReady();
+
+  logger.info(
+    { documentWorkerConcurrency: Math.max(1, config.documentWorkerConcurrency) },
+    "worker started"
+  );
+
+  orchestrationWorker.on("error", (err) => {
+    logger.error({ worker: "orchestration", err }, "worker error");
+  });
+
+  documentWorker.on("error", (err) => {
+    logger.error({ worker: "document", err }, "worker error");
+  });
+
+  // Keep process alive and report listener-level failures.
+  process.on("uncaughtException", (err) => {
+    logger.fatal({ err }, "uncaught exception in worker process");
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (err) => {
+    logger.fatal({ err }, "unhandled rejection in worker process");
+    process.exit(1);
+  });
 }
 
 main().catch((error) => {

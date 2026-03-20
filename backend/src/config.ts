@@ -14,6 +14,13 @@ function getEnv(name: string, fallback?: string): string {
   return value;
 }
 
+function parseCsv(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 8000),
   environment,
@@ -36,10 +43,16 @@ export const config = {
   resendApiKey: process.env.RESEND_API_KEY ?? "",
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-  notionClientId: process.env.NOTION_CLIENT_ID ?? "",
-  notionClientSecret: process.env.NOTION_CLIENT_SECRET ?? "",
-  slackClientId: process.env.SLACK_CLIENT_ID ?? "",
-  slackClientSecret: process.env.SLACK_CLIENT_SECRET ?? ""
+  documentWorkerConcurrency: Number(process.env.DOCUMENT_WORKER_CONCURRENCY ?? 4),
+  semanticSearchEnabled: process.env.SEMANTIC_SEARCH_ENABLED === "true",
+  embeddingProvider: process.env.EMBEDDING_PROVIDER ?? "openai",
+  embeddingModel: process.env.EMBEDDING_MODEL ?? "text-embedding-3-small",
+  embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? 1536),
+  embeddingBatchSize: Number(process.env.EMBEDDING_BATCH_SIZE ?? 64),
+  embeddingRequestMaxAttempts: Number(process.env.EMBEDDING_MAX_ATTEMPTS ?? 4),
+  embeddingRetryBaseDelayMs: Number(process.env.EMBEDDING_RETRY_BASE_DELAY_MS ?? 300),
+  openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  openaiBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
 };
 
 export function getFernetKeyBytes(): Buffer {

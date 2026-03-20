@@ -15,7 +15,7 @@ export const SQL_UPSERT_DOCUMENT = `
     $1, $2, $3, $4, $5, $6, $7, $8, $9,
     $10, $11, $12, $13, $14, $15, $16,
     $17, $18, $19, $20, $21, $22, $23,
-    $24, $25, now()
+    now()
   )
   ON CONFLICT (connector_id, external_id) DO UPDATE SET
     url = EXCLUDED.url,
@@ -45,8 +45,8 @@ export const SQL_UPSERT_DOCUMENT = `
 export const SQL_DELETE_DOCUMENT_CHUNKS = `DELETE FROM document_chunks WHERE document_id = $1`;
 
 export const SQL_INSERT_DOCUMENT_CHUNK = `
-  INSERT INTO document_chunks (document_id, org_id, chunk_index, content, token_count, search_vector)
-  VALUES ($1, $2, $3, $4, $5, to_tsvector('english', left($4, 50000)))
+  INSERT INTO document_chunks (document_id, org_id, chunk_index, content, token_count, embedding, search_vector)
+  VALUES ($1, $2, $3, $4, $5, $6::jsonb, to_tsvector('english', left($4, 50000)))
 `;
 
 export const SQL_UPDATE_DOCUMENT_SEARCH_VECTOR = `
