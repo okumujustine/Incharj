@@ -13,20 +13,20 @@ from app.db.engine import dispose_engine, get_engine
 
 
 def _make_bp(key: str, value: Any) -> Any:
-    """Return a typed bindparam for UUID strings so PostgreSQL can compare uuid columns."""
+    """Return a typed bindparam. UUID strings get PG_UUID type so PostgreSQL can compare uuid columns."""
     if isinstance(value, str) and len(value) == 36:
         try:
             _uuid_mod.UUID(value)
             return bindparam(key, value=value, type_=PG_UUID(as_uuid=False))
         except ValueError:
             pass
-    return value
+    return bindparam(key, value=value)
 
 
 def _coerce_sql(sql: str, params: tuple) -> Any:
     named = re.sub(r"\$(\d+)", lambda m: f":p{m.group(1)}", sql)
-    bps = {f"p{i+1}": _make_bp(f"p{i+1}", v) for i, v in enumerate(params)}
-    return text(named).bindparams(**bps)
+    bps = [_make_bp(f"p{i+1}", v) for i, v in enumerate(params)]
+    return text(named).bindparams(*bps)
 
 
 class DB:

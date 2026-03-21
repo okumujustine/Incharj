@@ -4,12 +4,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, update
+from sqlalchemy import delete, func, update
 
+import app.sql.checkpoints as sql_checkpoints
 import app.sql.connectors as sql_c
 import app.sql.sync_jobs as sql_jobs
 from app.db.pool import get_pool
-from app.db.tables import connectors as connectors_t
+from app.db.tables import connectors as connectors_t, documents as documents_t
 from app.errors import BadRequestError, NotFoundError
 from app.middleware.auth import get_current_membership, get_current_user, require_role
 
@@ -315,3 +316,39 @@ async def connectors_embed(
     async with pool.acquire() as conn:
         result = await embed_connector(conn, str(membership["org_id"]), connector_id)
     return result
+
+
+@router.post("/connectors/{connector_id}/reset-sync")
+async def connectors_reset_sync(
+    connector_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    from sqlalchemy import select as sa_select
+
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        sa_select(*_CONNECTOR_COLS).where(connectors_t.c.id == connector_id)
+    )
+    if row is None:
+        raise NotFoundError("Connector not found")
+    from app.db.tables import organizations
+
+    org_row = await pool.fetchrow(
+        sa_select(organizations.c.slug).where(organizations.c.id == row["org_id"])
+    )
+    membership = await get_current_membership(org_row["slug"], str(current_user["id"]))
+    require_role(membership, ["owner", "admin"])
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(sql_checkpoints.delete_connector_checkpoint(connector_id))
+            await conn.execute(
+                delete(documents_t).where(documents_t.c.connector_id == connector_id)
+            )
+            updated = await conn.fetchrow(
+                update(connectors_t)
+                .where(connectors_t.c.id == connector_id)
+                .values(doc_count=0, last_synced_at=None, last_error=None, updated_at=func.now())
+                .returning(*_CONNECTOR_COLS)
+            )
+    return _map_connector(updated)

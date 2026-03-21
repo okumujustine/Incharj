@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Sparkles,
   Ban,
+  RotateCcw,
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { connectorsService } from '../services/connectors'
@@ -351,6 +352,14 @@ export function ConnectorDetailPage() {
     },
   })
 
+  const resetSyncMutation = useMutation({
+    mutationFn: () => connectorsService.resetSync(orgSlug!, id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] })
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs', orgSlug, id] })
+    },
+  })
+
 
   if (connectorQuery.isLoading) return <PageSpinner />
 
@@ -415,6 +424,20 @@ export function ConnectorDetailPage() {
               disabled={connector.status === 'paused'}
             >
               Embed indexed
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                if (confirm('This will delete all synced documents and reset the sync checkpoint. The next sync will re-index everything from scratch. Continue?')) {
+                  resetSyncMutation.mutate()
+                }
+              }}
+              isLoading={resetSyncMutation.isPending}
+              leftIcon={<RotateCcw size={12} />}
+              disabled={connector.status === 'syncing'}
+            >
+              Reset sync
             </Button>
           </div>
         }

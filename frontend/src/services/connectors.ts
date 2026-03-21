@@ -94,6 +94,15 @@ export const connectorsService = {
     return response.data
   },
 
+  async resetSync(orgSlug: string, connectorId: string): Promise<Connector> {
+    const response = await apiClient.post<Connector>(
+      `/connectors/${connectorId}/reset-sync`,
+      null,
+      { params: { org: orgSlug } }
+    )
+    return response.data
+  },
+
   async cancelSyncJob(orgSlug: string, jobId: string): Promise<void> {
     await apiClient.post(`/sync/jobs/${jobId}/cancel`, null, { params: { org: orgSlug } })
   },

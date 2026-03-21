@@ -1,39 +1,44 @@
 from __future__ import annotations
 
-import asyncio
 import json
+import uuid as _uuid_mod
 from typing import Any
 
-import asyncpg
+from sqlalchemy import select, text
 
 from app.ai.embedder import embed_one_cached
 from app.ai.index import cosine_similarity, get_embedding_provider
+from app.db.pool import DB
+from app.db.tables import document_chunks
 
 
-def _build_filters(options: dict[str, Any]) -> tuple[list[Any], str]:
-    values: list[Any] = [options["org_id"], options["query"]]
-    filters = ["d.org_id = $1"]
+def _build_filters(options: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    params: dict[str, Any] = {
+        "org_id": _uuid_mod.UUID(options["org_id"]),
+        "query": options["query"],
+    }
+    filters = ["d.org_id = :org_id"]
 
     if options.get("connector_id"):
-        values.append(options["connector_id"])
-        filters.append(f"d.connector_id = ${len(values)}")
+        params["connector_id"] = _uuid_mod.UUID(options["connector_id"])
+        filters.append("d.connector_id = :connector_id")
     if options.get("kind"):
-        values.append(options["kind"])
-        filters.append(f"d.kind = ${len(values)}")
+        params["kind"] = options["kind"]
+        filters.append("d.kind = :kind")
     if options.get("from_date"):
-        values.append(options["from_date"])
-        filters.append(f"d.mtime >= ${len(values)}")
+        params["from_date"] = options["from_date"]
+        filters.append("d.mtime >= :from_date")
     if options.get("to_date"):
-        values.append(options["to_date"])
-        filters.append(f"d.mtime <= ${len(values)}")
+        params["to_date"] = options["to_date"]
+        filters.append("d.mtime <= :to_date")
 
-    return values, " AND ".join(filters)
+    return params, " AND ".join(filters)
 
 
-def _build_fts_query(where_clause: str, limit_param: int, offset_param: int) -> str:
+def _build_fts_query(where_clause: str) -> str:
     return f"""
     WITH tsq AS (
-      SELECT websearch_to_tsquery('english', $2) AS q
+      SELECT websearch_to_tsquery('english', :query) AS q
     ),
     candidates AS (
       SELECT
@@ -79,13 +84,13 @@ def _build_fts_query(where_clause: str, limit_param: int, offset_param: int) -> 
       ) AS snippet
     FROM ranked
     ORDER BY raw_score DESC
-    LIMIT ${limit_param} OFFSET ${offset_param};
+    LIMIT :limit OFFSET :offset;
     """
 
 
 def _build_fts_count_query(where_clause: str) -> str:
     return f"""
-    WITH tsq AS (SELECT websearch_to_tsquery('english', $2) AS q)
+    WITH tsq AS (SELECT websearch_to_tsquery('english', :query) AS q)
     SELECT count(*)::int AS total
     FROM documents d
     JOIN connectors c ON c.id = d.connector_id
@@ -102,18 +107,18 @@ def _build_fts_count_query(where_clause: str) -> str:
     """
 
 
-def _build_fuzzy_query(where_clause: str, limit_param: int, offset_param: int) -> str:
+def _build_fuzzy_query(where_clause: str) -> str:
     return f"""
     WITH ranked AS (
       SELECT
         d.id, d.title, d.url, d.kind, d.ext, d.mtime, d.indexed_at,
         c.kind AS connector_kind, c.name AS connector_name,
-        similarity(coalesce(d.title, ''), $2) AS raw_score,
+        similarity(coalesce(d.title, ''), :query) AS raw_score,
         d.title AS best_chunk_content
       FROM documents d
       JOIN connectors c ON c.id = d.connector_id
       WHERE {where_clause}
-        AND similarity(coalesce(d.title, ''), $2) > 0.1
+        AND similarity(coalesce(d.title, ''), :query) > 0.1
     )
     SELECT
       id, title, url, kind, ext, mtime, connector_kind, connector_name,
@@ -121,7 +126,7 @@ def _build_fuzzy_query(where_clause: str, limit_param: int, offset_param: int) -
       coalesce(best_chunk_content, '') AS snippet
     FROM ranked
     ORDER BY raw_score DESC
-    LIMIT ${limit_param} OFFSET ${offset_param};
+    LIMIT :limit OFFSET :offset;
     """
 
 
@@ -131,7 +136,7 @@ def _build_fuzzy_count_query(where_clause: str) -> str:
     FROM documents d
     JOIN connectors c ON c.id = d.connector_id
     WHERE {where_clause}
-      AND similarity(coalesce(d.title, ''), $2) > 0.1;
+      AND similarity(coalesce(d.title, ''), :query) > 0.1;
     """
 
 
@@ -166,7 +171,7 @@ def _map_row(row: Any) -> dict[str, Any]:
 
 
 async def _apply_semantic_rerank(
-    conn: asyncpg.Connection,
+    conn: DB,
     options: dict[str, Any],
     results: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -183,13 +188,14 @@ async def _apply_semantic_rerank(
 
     doc_ids = [r["id"] for r in results]
     embedding_rows = await conn.fetch(
-        """
-        SELECT document_id, content, embedding
-        FROM document_chunks
-        WHERE document_id = ANY($1::uuid[])
-          AND embedding IS NOT NULL
-        """,
-        doc_ids,
+        select(
+            document_chunks.c.document_id,
+            document_chunks.c.content,
+            document_chunks.c.embedding,
+        ).where(
+            document_chunks.c.document_id.in_(doc_ids),
+            document_chunks.c.embedding.isnot(None),
+        )
     )
 
     best_chunk_by_doc: dict[str, dict[str, Any]] = {}
@@ -197,11 +203,11 @@ async def _apply_semantic_rerank(
         embedding = _parse_embedding(row["embedding"])
         if not embedding or len(embedding) != len(query_embedding):
             continue
-        similarity = cosine_similarity(query_embedding, embedding)
+        sim = cosine_similarity(query_embedding, embedding)
         doc_id = str(row["document_id"])
         best = best_chunk_by_doc.get(doc_id)
-        if best is None or similarity > best["similarity"]:
-            best_chunk_by_doc[doc_id] = {"similarity": similarity, "content": row["content"]}
+        if best is None or sim > best["similarity"]:
+            best_chunk_by_doc[doc_id] = {"similarity": sim, "content": row["content"]}
 
     lexical_max = max((r["score"] for r in results), default=0.0)
     if lexical_max <= 0:
@@ -212,30 +218,25 @@ async def _apply_semantic_rerank(
         semantic = best_chunk_by_doc.get(r["id"])
         lexical_norm = r["score"] / lexical_max
         semantic_norm = max(0.0, min(1.0, (semantic["similarity"] + 1) / 2)) if semantic else 0.0
-        hybrid_score = lexical_norm * 0.6 + semantic_norm * 0.4
         reranked.append({
             **r,
-            "score": hybrid_score,
+            "score": lexical_norm * 0.6 + semantic_norm * 0.4,
             "snippet": semantic["content"][:320] if semantic else r["snippet"],
         })
 
     return sorted(reranked, key=lambda x: x["score"], reverse=True)
 
 
-async def _ft_search(conn: asyncpg.Connection, options: dict[str, Any]) -> dict[str, Any] | None:
-    values, where_clause = _build_filters(options)
-    limit = options.get("limit", 20)
-    offset = options.get("offset", 0)
-    values.append(limit)
-    values.append(offset)
+async def _ft_search(conn: DB, options: dict[str, Any]) -> dict[str, Any] | None:
+    params, where_clause = _build_filters(options)
+    params["limit"] = options.get("limit", 20)
+    params["offset"] = options.get("offset", 0)
 
-    sql = _build_fts_query(where_clause, len(values) - 1, len(values))
-    count_sql = _build_fts_count_query(where_clause)
-    count_values = values[:-2]
-
-    rows, count_row = await asyncio.gather(
-        conn.fetch(sql, *values),
-        conn.fetchrow(count_sql, *count_values),
+    rows = await conn.fetch(text(_build_fts_query(where_clause)).bindparams(**params))
+    count_row = await conn.fetchrow(
+        text(_build_fts_count_query(where_clause)).bindparams(
+            **{k: v for k, v in params.items() if k not in ("limit", "offset")}
+        )
     )
 
     total = count_row["total"] if count_row else 0
@@ -244,23 +245,25 @@ async def _ft_search(conn: asyncpg.Connection, options: dict[str, Any]) -> dict[
 
     mapped = [_map_row(r) for r in rows]
     reranked = await _apply_semantic_rerank(conn, options, mapped)
-    return {"total": total, "results": reranked, "query": options["query"], "offset": offset, "limit": limit}
+    return {
+        "total": total,
+        "results": reranked,
+        "query": options["query"],
+        "offset": params["offset"],
+        "limit": params["limit"],
+    }
 
 
-async def _fuzzy_search(conn: asyncpg.Connection, options: dict[str, Any]) -> dict[str, Any]:
-    values, where_clause = _build_filters(options)
-    limit = options.get("limit", 20)
-    offset = options.get("offset", 0)
-    values.append(limit)
-    values.append(offset)
+async def _fuzzy_search(conn: DB, options: dict[str, Any]) -> dict[str, Any]:
+    params, where_clause = _build_filters(options)
+    params["limit"] = options.get("limit", 20)
+    params["offset"] = options.get("offset", 0)
 
-    sql = _build_fuzzy_query(where_clause, len(values) - 1, len(values))
-    count_sql = _build_fuzzy_count_query(where_clause)
-    count_values = values[:-2]
-
-    rows, count_row = await asyncio.gather(
-        conn.fetch(sql, *values),
-        conn.fetchrow(count_sql, *count_values),
+    rows = await conn.fetch(text(_build_fuzzy_query(where_clause)).bindparams(**params))
+    count_row = await conn.fetchrow(
+        text(_build_fuzzy_count_query(where_clause)).bindparams(
+            **{k: v for k, v in params.items() if k not in ("limit", "offset")}
+        )
     )
 
     mapped = [_map_row(r) for r in rows]
@@ -269,15 +272,16 @@ async def _fuzzy_search(conn: asyncpg.Connection, options: dict[str, Any]) -> di
         "total": count_row["total"] if count_row else 0,
         "results": reranked,
         "query": options["query"],
-        "offset": offset,
-        "limit": limit,
+        "offset": params["offset"],
+        "limit": params["limit"],
     }
 
 
-async def full_text_search(conn: asyncpg.Connection, options: dict[str, Any]) -> dict[str, Any]:
+async def full_text_search(conn: DB, options: dict[str, Any]) -> dict[str, Any]:
     tsq_row = await conn.fetchrow(
-        "SELECT (websearch_to_tsquery('english', $1)::text = '') AS is_empty",
-        options["query"],
+        text("SELECT (websearch_to_tsquery('english', :query)::text = '') AS is_empty").bindparams(
+            query=options["query"]
+        )
     )
     if tsq_row and tsq_row["is_empty"]:
         return {
