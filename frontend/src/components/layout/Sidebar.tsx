@@ -15,6 +15,7 @@ import {
   Moon,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { IncharjLogo } from '../ui/IncharjLogo'
 import { useAuth } from '../../hooks/useAuth'
 import { useTheme } from '../../hooks/useTheme'
 import { orgsService } from '../../services/orgs'
@@ -62,6 +63,11 @@ export function Sidebar({ orgSlug }: SidebarProps) {
 
   return (
     <aside className="w-[220px] lg:w-[240px] xl:w-[260px] flex-shrink-0 flex flex-col bg-bg-surface border-r border-border h-screen sticky top-0">
+      {/* Logo */}
+      <div className="px-3 h-12 xl:h-14 flex items-center border-b border-border">
+        <IncharjLogo size={22} />
+      </div>
+
       {/* Org Switcher */}
       <div className="relative">
         <button

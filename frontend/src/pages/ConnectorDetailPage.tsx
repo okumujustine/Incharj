@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
+  Ban,
 } from 'lucide-react'
 import { formatDistanceToNow, format } from 'date-fns'
 import { connectorsService } from '../services/connectors'
@@ -40,11 +41,22 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`
 }
 
-function SyncJobRow({ job }: { job: SyncJob }) {
+function SyncJobRow({
+  job,
+  orgSlug,
+  onCancel,
+  isCancelling,
+}: {
+  job: SyncJob
+  orgSlug: string
+  onCancel: (jobId: string) => void
+  isCancelling: boolean
+}) {
   const [expanded, setExpanded] = useState(false)
 
   const isPartial = job.status === 'done' && job.docs_errored > 0
   const displayStatus = isPartial ? 'partial' : job.status
+  const isActive = job.status === 'pending' || job.status === 'running'
 
   const statusConfig: Record<
     string,
@@ -74,6 +86,11 @@ function SyncJobRow({ job }: { job: SyncJob }) {
       icon: <Clock size={14} className="text-text-muted" />,
       variant: 'default',
       label: 'pending',
+    },
+    cancelled: {
+      icon: <Ban size={14} className="text-text-muted" />,
+      variant: 'default',
+      label: 'cancelled',
     },
   }
 
@@ -121,6 +138,19 @@ function SyncJobRow({ job }: { job: SyncJob }) {
             <p className="text-xs text-text-secondary">{started}</p>
             <p className="text-2xs text-text-muted font-mono">{duration}</p>
           </div>
+          {isActive && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onCancel(job.id)
+              }}
+              disabled={isCancelling}
+              className="flex items-center gap-1 px-2 py-1 text-2xs text-error hover:bg-error/10 border border-error/20 rounded transition-colors disabled:opacity-50"
+            >
+              {isCancelling ? <Loader2 size={10} className="animate-spin" /> : <Ban size={10} />}
+              Cancel
+            </button>
+          )}
           <span className="text-text-muted">
             {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </span>
@@ -314,6 +344,13 @@ export function ConnectorDetailPage() {
     },
   })
 
+  const cancelJobMutation = useMutation({
+    mutationFn: (jobId: string) => connectorsService.cancelSyncJob(orgSlug!, jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs', orgSlug, id] })
+    },
+  })
+
 
   if (connectorQuery.isLoading) return <PageSpinner />
 
@@ -460,7 +497,13 @@ export function ConnectorDetailPage() {
             ) : (
               <div>
                 {syncJobsQuery.data!.map((job) => (
-                  <SyncJobRow key={job.id} job={job} />
+                  <SyncJobRow
+                    key={job.id}
+                    job={job}
+                    orgSlug={orgSlug!}
+                    onCancel={(jobId) => cancelJobMutation.mutate(jobId)}
+                    isCancelling={cancelJobMutation.isPending && cancelJobMutation.variables === job.id}
+                  />
                 ))}
               </div>
             )}

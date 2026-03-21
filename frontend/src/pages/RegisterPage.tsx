@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Zap } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
+import { IncharjLogo } from '../components/ui/IncharjLogo'
 import { useAuth } from '../hooks/useAuth'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -37,13 +38,8 @@ export function RegisterPage() {
     <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-8">
-          <div className="w-7 h-7 bg-accent/20 border border-accent/30 rounded flex items-center justify-center">
-            <Zap size={14} className="text-accent" />
-          </div>
-          <span className="text-base font-semibold text-text-primary tracking-tight">
-            Incharj
-          </span>
+        <div className="mb-8">
+          <IncharjLogo size={32} />
         </div>
 
         <div className="mb-6">

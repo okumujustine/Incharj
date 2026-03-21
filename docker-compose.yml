@@ -33,7 +33,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-incharj}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-incharj}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-incharj}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-incharj}
       REDIS_URL: redis://redis:6379/0
       APP_SECRET: ${SECRET_KEY:?SECRET_KEY is required}
       ENCRYPTION_KEY: ${FERNET_KEY:?FERNET_KEY is required}
@@ -41,10 +41,10 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
-      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
-      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
-      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+      SEMANTIC_SEARCH_ENABLED: ${SEMANTIC_SEARCH_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,7 +57,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-incharj}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-incharj}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-incharj}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-incharj}
       REDIS_URL: redis://redis:6379/0
       APP_SECRET: ${SECRET_KEY}
       ENCRYPTION_KEY: ${FERNET_KEY}
@@ -65,16 +65,29 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID:-}
-      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET:-}
-      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
-      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+      SEMANTIC_SEARCH_ENABLED: ${SEMANTIC_SEARCH_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: npm run worker
+    command: celery -A app.workers.celery_app worker --loglevel=info -Q sync_orchestration,sync_documents
+
+  worker-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-incharj}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-incharj}
+      REDIS_URL: redis://redis:6379/0
+      APP_SECRET: ${SECRET_KEY}
+      ENCRYPTION_KEY: ${FERNET_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app beat --loglevel=info
 
   web:
     build:

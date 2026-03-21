@@ -94,6 +94,10 @@ export const connectorsService = {
     return response.data
   },
 
+  async cancelSyncJob(orgSlug: string, jobId: string): Promise<void> {
+    await apiClient.post(`/sync/jobs/${jobId}/cancel`, null, { params: { org: orgSlug } })
+  },
+
   async listSyncJobs(orgSlug: string, connectorId: string): Promise<SyncJob[]> {
     const response = await apiClient.get<SyncJob[]>(
       `/sync/jobs`,
