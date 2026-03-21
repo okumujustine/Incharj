@@ -1,27 +1,10 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import app.sql.ai as sql_ai
 from app.ai.index import get_embedding_provider
 from app.utils.security import sha256
-
-
-def _parse_embedding(value: Any) -> list[float]:
-    """Defensively parse an embedding value that may be a list or a legacy JSON string."""
-    if not value:
-        return []
-    if isinstance(value, list):
-        return [x for x in value if isinstance(x, (int, float))]
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                return [x for x in parsed if isinstance(x, (int, float))]
-        except Exception:
-            pass
-    return []
 
 
 def _build_cache_key(namespace: str, text: str) -> str:
@@ -41,7 +24,7 @@ async def embed_batch_cached(texts: list[str], conn) -> list[list[float]]:
     cached_rows = await conn.fetch(sql_ai.select_embeddings_by_keys(keys))
     cached_map: dict[str, list[float]] = {}
     for row in cached_rows:
-        embedding = _parse_embedding(row["embedding"])
+        embedding = list(row["embedding"]) if row["embedding"] is not None else []
         if len(embedding) == provider.dimensions:
             cached_map[row["cache_key"]] = embedding
 

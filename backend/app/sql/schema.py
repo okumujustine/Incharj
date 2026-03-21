@@ -141,7 +141,7 @@ DDL_INITIALIZE = """
       chunk_index INTEGER NOT NULL,
       content TEXT NOT NULL,
       token_count INTEGER,
-      embedding JSONB,
+      embedding vector,
       search_vector tsvector,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       CONSTRAINT uq_chunk_doc_idx UNIQUE (document_id, chunk_index)
@@ -227,7 +227,7 @@ DDL_INITIALIZE = """
       provider VARCHAR(64) NOT NULL,
       model VARCHAR(120) NOT NULL,
       dimensions INTEGER NOT NULL,
-      embedding JSONB NOT NULL,
+      embedding vector NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS ix_embedding_cache_updated_at ON embedding_cache(updated_at);
@@ -248,5 +248,27 @@ DDL_INITIALIZE = """
 
     UPDATE documents SET checksum = content_hash WHERE checksum IS NULL;
 
-    ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding JSONB;
+    ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding vector;
+    ALTER TABLE embedding_cache ADD COLUMN IF NOT EXISTS embedding vector;
+
+    -- Migrate existing JSONB embeddings to vector type
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'document_chunks'
+          AND column_name = 'embedding'
+          AND data_type = 'jsonb'
+      ) THEN
+        ALTER TABLE document_chunks ALTER COLUMN embedding TYPE vector USING embedding::text::vector;
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'embedding_cache'
+          AND column_name = 'embedding'
+          AND data_type = 'jsonb'
+      ) THEN
+        ALTER TABLE embedding_cache ALTER COLUMN embedding TYPE vector USING embedding::text::vector;
+      END IF;
+    END $$;
 """

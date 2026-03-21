@@ -28,6 +28,7 @@ dependencies = [
     "orjson>=3.11.0",
     "email-validator>=2.2.0",
     "pdfplumber>=0.11.0",
+    "pgvector>=0.3.0",
 ]
 
 [project.optional-dependencies]

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import uuid as _uuid_mod
 from typing import Any
 
@@ -140,21 +139,6 @@ def _build_fuzzy_count_query(where_clause: str) -> str:
     """
 
 
-def _parse_embedding(value: Any) -> list[float]:
-    if not value:
-        return []
-    if isinstance(value, list):
-        return [x for x in value if isinstance(x, (int, float))]
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                return [x for x in parsed if isinstance(x, (int, float))]
-        except Exception:
-            pass
-    return []
-
-
 def _map_row(row: Any) -> dict[str, Any]:
     return {
         "id": str(row["id"]),
@@ -200,7 +184,7 @@ async def _apply_semantic_rerank(
 
     best_chunk_by_doc: dict[str, dict[str, Any]] = {}
     for row in embedding_rows:
-        embedding = _parse_embedding(row["embedding"])
+        embedding = list(row["embedding"]) if row["embedding"] is not None else []
         if not embedding or len(embedding) != len(query_embedding):
             continue
         sim = cosine_similarity(query_embedding, embedding)

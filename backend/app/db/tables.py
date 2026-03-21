@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
+from pgvector.sqlalchemy import Vector
 
 metadata = MetaData()
 
@@ -158,7 +159,7 @@ document_chunks = Table(
     Column("chunk_index", Integer, nullable=False),
     Column("content", Text, nullable=False),
     Column("token_count", Integer),
-    Column("embedding", JSONB),
+    Column("embedding", Vector()),
     Column("search_vector", TSVECTOR),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
@@ -180,6 +181,6 @@ embedding_cache = Table(
     Column("provider", String(64), nullable=False),
     Column("model", String(120), nullable=False),
     Column("dimensions", Integer, nullable=False),
-    Column("embedding", JSONB, nullable=False),
+    Column("embedding", Vector(), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
