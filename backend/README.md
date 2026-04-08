@@ -25,16 +25,24 @@ This folder is a parallel FastAPI migration target. It does not replace the exis
 
 ## Run locally
 ```bash
-cd backend_py
+cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
 uvicorn app.main:app --reload --port 8100
 ```
 
+## Run with Infisical
+Store environment-specific settings and secrets in Infisical, then inject them into the process at startup. The application already reads configuration from environment variables via `app.core.config.Settings`, so no direct Infisical SDK integration is required.
+
+```bash
+cd backend
+infisical run --env=dev --path=/backend -- uvicorn app.main:app --reload --port 8100
+```
+
 ## Run worker
 ```bash
-cd backend_py
+cd backend
 source .venv/bin/activate
 celery -A app.workers.celery_app.celery_app worker -l info
 ```

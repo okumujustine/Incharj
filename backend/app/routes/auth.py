@@ -3,30 +3,28 @@ from __future__ import annotations
 from fastapi import APIRouter, Cookie, Depends, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.core.config import settings
 from app.db.pool import get_pool
 from app.middleware.auth import get_current_user
 from app.services.auth_service import login_user, logout_session, refresh_session, register_user
 
 router = APIRouter()
 
-_REFRESH_COOKIE = "refresh_token"
-_COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days
-
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
     response.set_cookie(
-        key=_REFRESH_COOKIE,
+        key=settings.refresh_cookie_name,
         value=token,
         httponly=True,
-        samesite="lax",
-        secure=False,  # set True in production behind HTTPS
-        max_age=_COOKIE_MAX_AGE,
+        samesite=settings.cookie_samesite,
+        secure=settings.cookie_secure,
+        max_age=settings.refresh_token_expire_days * 24 * 3600,
         path="/",
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(key=_REFRESH_COOKIE, path="/")
+    response.delete_cookie(key=settings.refresh_cookie_name, path="/")
 
 
 @router.post("/auth/register", status_code=201)
@@ -64,7 +62,7 @@ async def auth_login(request: Request) -> JSONResponse:
 @router.post("/auth/refresh")
 async def auth_refresh(
     request: Request,
-    refresh_token: str | None = Cookie(default=None),
+    refresh_token: str | None = Cookie(default=None, alias=settings.refresh_cookie_name),
 ) -> JSONResponse:
     token = refresh_token or request.headers.get("x-refresh-token")
     if not token:
@@ -85,7 +83,7 @@ async def auth_refresh(
 
 @router.post("/auth/logout", status_code=204)
 async def auth_logout(
-    refresh_token: str | None = Cookie(default=None),
+    refresh_token: str | None = Cookie(default=None, alias=settings.refresh_cookie_name),
 ) -> Response:
     if refresh_token:
         pool = await get_pool()

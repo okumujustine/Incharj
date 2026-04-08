@@ -30,7 +30,7 @@ app.add_middleware(
 )
 
 
-@app.exception_handler(HttpError)
+@app.exception_handler(exc_class_or_status_code=HttpError)
 async def http_error_handler(request: Request, exc: HttpError) -> JSONResponse:
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
@@ -48,10 +48,10 @@ async def on_startup() -> None:
     try:
         async with pool.acquire() as conn:
             for ext in DDL_EXTENSIONS:
-                await conn.execute(f'CREATE EXTENSION IF NOT EXISTS "{ext}"')
-            await conn.execute(DDL_INITIALIZE)
+                await conn.execute(stmt_or_sql=f'CREATE EXTENSION IF NOT EXISTS "{ext}"')
+            await conn.execute(stmt_or_sql=DDL_INITIALIZE)
     except Exception as exc:
-        logging.getLogger("startup").warning("Schema init skipped: %s", exc)
+        logging.getLogger(name="startup").warning(msg="Schema init skipped: %s", args= exc)
 
 
 @app.get("/health")

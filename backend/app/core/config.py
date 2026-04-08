@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    cookie_secure: bool = False
+    cookie_samesite: str = "lax"
+    refresh_cookie_name: str = "refresh_token"
 
     frontend_url: str = "http://localhost:5173"
     resend_api_key: str = ""
