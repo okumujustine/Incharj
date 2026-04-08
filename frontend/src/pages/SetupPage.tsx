@@ -1,18 +1,20 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { IncharjLogo } from '../components/ui/IncharjLogo'
-import { useAuth } from '../hooks/useAuth'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { setupService } from '../services/setup'
+import { authService } from '../services/auth'
+import { useAuthStore } from '../stores/authStore'
 
-export function RegisterPage() {
+export function SetupPage() {
   const navigate = useNavigate()
-  const { register } = useAuth()
+  const setAuth = useAuthStore((s) => s.setAuth)
+
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+  const [orgName, setOrgName] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -22,12 +24,15 @@ export function RegisterPage() {
     setIsLoading(true)
 
     try {
-      await register({ full_name: fullName, email, password })
-      navigate('/login')
+      const data = await setupService.initialize({ full_name: fullName, email, password, org_name: orgName })
+      useAuthStore.getState().updateToken(data.access_token)
+      const userData = await authService.me()
+      setAuth(userData, data.access_token)
+      navigate('/search', { replace: true })
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        'Registration failed. Please try again.'
+        'Setup failed. Please try again.'
       setError(message)
     } finally {
       setIsLoading(false)
@@ -37,20 +42,27 @@ export function RegisterPage() {
   return (
     <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="mb-8">
           <IncharjLogo size={32} />
         </div>
 
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-text-primary mb-1">Create account</h1>
-          <p className="text-sm text-text-muted">Get started with Incharj for free</p>
+          <h1 className="text-xl font-semibold text-text-primary mb-1">Set up Incharj</h1>
+          <p className="text-sm text-text-muted">Create your organization and admin account to get started.</p>
         </div>
 
         <div className="bg-bg-surface border border-border rounded p-6">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
-              label="Full name"
+              label="Organization name"
+              type="text"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              placeholder="Acme Corp"
+              required
+            />
+            <Input
+              label="Your full name"
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -69,22 +81,13 @@ export function RegisterPage() {
             />
             <Input
               label="Password"
-              type={showPassword ? 'text' : 'password'}
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Min 8 characters"
               autoComplete="new-password"
               minLength={8}
               required
-              rightElement={
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="hover:text-text-secondary transition-colors"
-                >
-                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              }
             />
 
             {error && (
@@ -100,23 +103,10 @@ export function RegisterPage() {
               isLoading={isLoading}
               className="w-full mt-1"
             >
-              Create account
+              Create organization
             </Button>
           </form>
         </div>
-
-        <p className="text-center text-sm text-text-muted mt-5">
-          Already have an account?{' '}
-          <Link to="/login" className="text-accent hover:text-accent-hover transition-colors">
-            Sign in
-          </Link>
-        </p>
-
-        <p className="text-center text-xs text-text-muted mt-4">
-          By creating an account, you agree to our{' '}
-          <span className="text-text-secondary">Terms of Service</span> and{' '}
-          <span className="text-text-secondary">Privacy Policy</span>.
-        </p>
       </div>
     </div>
   )

@@ -18,10 +18,11 @@ function useBreadcrumbs(crumbs?: Crumb[]): Crumb[] {
 
   if (crumbs) return crumbs
 
-  const parts = location.pathname.split('/').filter(Boolean)
+  // Skip the first segment (org slug) — it adds no value in a single-org app
+  const parts = location.pathname.split('/').filter(Boolean).slice(1)
   return parts.map((part, i) => ({
     label: part.charAt(0).toUpperCase() + part.slice(1).replace(/-/g, ' '),
-    to: '/' + parts.slice(0, i + 1).join('/'),
+    to: i < parts.length - 1 ? '/' + parts.slice(0, i + 1).join('/') : undefined,
   }))
 }
 

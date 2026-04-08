@@ -4,6 +4,7 @@ export interface User {
   full_name: string | null
   avatar_url: string | null
   is_verified: boolean
+  org: Organization | null
 }
 
 export interface Organization {
@@ -110,10 +111,11 @@ export interface LoginPayload {
   password: string
 }
 
-export interface RegisterPayload {
+export interface SetupPayload {
+  full_name: string
   email: string
   password: string
-  full_name: string
+  org_name: string
 }
 
 export interface AuthResponse {

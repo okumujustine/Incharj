@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plug,
@@ -11,6 +11,7 @@ import {
   Link2,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { useOrgSlug } from '../hooks/useOrgSlug'
 import { connectorsService } from '../services/connectors'
 import { TopBar } from '../components/layout/TopBar'
 import { Button } from '../components/ui/Button'
@@ -30,7 +31,6 @@ const CONNECTOR_CATALOG = [
 interface ConnectorTileProps {
   catalog: (typeof CONNECTOR_CATALOG)[number]
   connector: Connector | undefined
-  orgSlug: string
   isSyncing: boolean
   isConnecting: boolean
   onConnect: () => void
@@ -43,7 +43,6 @@ interface ConnectorTileProps {
 function ConnectorTile({
   catalog,
   connector,
-  orgSlug,
   isSyncing,
   isConnecting,
   onConnect,
@@ -84,7 +83,7 @@ function ConnectorTile({
 
         {connected && (
           <button
-            onClick={() => navigate(`/${orgSlug}/connectors/${connector.id}`)}
+            onClick={() => navigate(`/connectors/${connector.id}`)}
             className="text-text-muted hover:text-text-secondary transition-colors flex-shrink-0"
             title="View details"
           >
@@ -176,15 +175,14 @@ function ConnectorTile({
 }
 
 export function ConnectorsPage() {
-  const { orgSlug } = useParams<{ orgSlug: string }>()
+  const orgSlug = useOrgSlug()
   const queryClient = useQueryClient()
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set())
   const [connectingKind, setConnectingKind] = useState<string | null>(null)
 
   const connectorsQuery = useQuery({
     queryKey: ['connectors', orgSlug],
-    queryFn: () => connectorsService.list(orgSlug!),
-    enabled: !!orgSlug,
+    queryFn: () => connectorsService.list(orgSlug),
     refetchInterval: 10000,
   })
 
@@ -195,21 +193,21 @@ export function ConnectorsPage() {
       const existing = connectorsQuery.data?.find(
         (c) => c.kind === kind && !c.has_credentials
       )
-      const connector = existing ?? await connectorsService.create(orgSlug!, {
+      const connector = existing ?? await connectorsService.create(orgSlug, {
         kind,
         name: catalog.label,
       })
       try {
-        const { url, state } = await connectorsService.getOAuthUrl(orgSlug!, kind, connector.id)
+        const { url, state } = await connectorsService.getOAuthUrl(orgSlug, kind, connector.id)
         // Persist state → {connector_id, org_slug} so the callback page can resume
         localStorage.setItem(`oauth_state:${state}`, JSON.stringify({
           connector_id: connector.id,
-          org_slug: orgSlug!,
+          org_slug: orgSlug,
           kind,
         }))
         return url
       } catch (err) {
-        if (!existing) await connectorsService.delete(orgSlug!, connector.id)
+        if (!existing) await connectorsService.delete(orgSlug, connector.id)
         throw err
       }
     },
@@ -225,7 +223,7 @@ export function ConnectorsPage() {
   })
 
   const syncMutation = useMutation({
-    mutationFn: (connectorId: string) => connectorsService.sync(orgSlug!, connectorId),
+    mutationFn: (connectorId: string) => connectorsService.sync(orgSlug, connectorId),
     onMutate: (id) => setSyncingIds((s) => new Set([...s, id])),
     onSettled: (_, __, id) => {
       setSyncingIds((s) => { const n = new Set(s); n.delete(id); return n })
@@ -234,17 +232,17 @@ export function ConnectorsPage() {
   })
 
   const pauseMutation = useMutation({
-    mutationFn: (id: string) => connectorsService.pause(orgSlug!, id),
+    mutationFn: (id: string) => connectorsService.pause(orgSlug, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['connectors', orgSlug] }),
   })
 
   const resumeMutation = useMutation({
-    mutationFn: (id: string) => connectorsService.resume(orgSlug!, id),
+    mutationFn: (id: string) => connectorsService.resume(orgSlug, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['connectors', orgSlug] }),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => connectorsService.delete(orgSlug!, id),
+    mutationFn: (id: string) => connectorsService.delete(orgSlug, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['connectors', orgSlug] }),
   })
 
@@ -252,7 +250,7 @@ export function ConnectorsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <TopBar crumbs={[{ label: orgSlug ?? '' }, { label: 'Connectors' }]} />
+      <TopBar crumbs={[{ label: 'Connectors' }]} />
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="max-w-6xl mx-auto p-5">
@@ -276,7 +274,6 @@ export function ConnectorsPage() {
                       key={catalog.kind}
                       catalog={catalog}
                       connector={connector}
-                      orgSlug={orgSlug!}
                       isSyncing={connector ? syncingIds.has(connector.id) : false}
                       isConnecting={connectingKind === catalog.kind}
                       onConnect={() => connectMutation.mutate(catalog.kind)}

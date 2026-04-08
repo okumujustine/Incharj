@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useOrgSlug } from '../hooks/useOrgSlug'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw,
@@ -292,26 +293,27 @@ function SyncLimitCard({
 }
 
 export function ConnectorDetailPage() {
-  const { orgSlug, id } = useParams<{ orgSlug: string; id: string }>()
+  const { id } = useParams<{ id: string }>()
+  const orgSlug = useOrgSlug()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const connectorQuery = useQuery({
     queryKey: ['connector', orgSlug, id],
-    queryFn: () => connectorsService.get(orgSlug!, id!),
-    enabled: !!orgSlug && !!id,
+    queryFn: () => connectorsService.get(orgSlug, id!),
+    enabled: !!id,
     refetchInterval: 10000,
   })
 
   const syncJobsQuery = useQuery({
     queryKey: ['sync-jobs', orgSlug, id],
-    queryFn: () => connectorsService.listSyncJobs(orgSlug!, id!),
-    enabled: !!orgSlug && !!id,
+    queryFn: () => connectorsService.listSyncJobs(orgSlug, id!),
+    enabled: !!id,
     refetchInterval: 5000,
   })
 
   const syncMutation = useMutation({
-    mutationFn: () => connectorsService.sync(orgSlug!, id!),
+    mutationFn: () => connectorsService.sync(orgSlug, id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] })
       queryClient.invalidateQueries({ queryKey: ['sync-jobs', orgSlug, id] })
@@ -319,26 +321,26 @@ export function ConnectorDetailPage() {
   })
 
   const pauseMutation = useMutation({
-    mutationFn: () => connectorsService.pause(orgSlug!, id!),
+    mutationFn: () => connectorsService.pause(orgSlug, id!),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] }),
   })
 
   const resumeMutation = useMutation({
-    mutationFn: () => connectorsService.resume(orgSlug!, id!),
+    mutationFn: () => connectorsService.resume(orgSlug, id!),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] }),
   })
 
   const updateMutation = useMutation({
     mutationFn: (config: Record<string, unknown>) =>
-      connectorsService.update(orgSlug!, id!, { config }),
+      connectorsService.update(orgSlug, id!, { config }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] }),
   })
 
   const embedMutation = useMutation({
-    mutationFn: () => connectorsService.embed(orgSlug!, id!),
+    mutationFn: () => connectorsService.embed(orgSlug, id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] })
       queryClient.invalidateQueries({ queryKey: ['sync-jobs', orgSlug, id] })
@@ -346,14 +348,14 @@ export function ConnectorDetailPage() {
   })
 
   const cancelJobMutation = useMutation({
-    mutationFn: (jobId: string) => connectorsService.cancelSyncJob(orgSlug!, jobId),
+    mutationFn: (jobId: string) => connectorsService.cancelSyncJob(orgSlug, jobId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-jobs', orgSlug, id] })
     },
   })
 
   const resetSyncMutation = useMutation({
-    mutationFn: () => connectorsService.resetSync(orgSlug!, id!),
+    mutationFn: () => connectorsService.resetSync(orgSlug, id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connector', orgSlug, id] })
       queryClient.invalidateQueries({ queryKey: ['sync-jobs', orgSlug, id] })
@@ -365,7 +367,7 @@ export function ConnectorDetailPage() {
 
   const connector = connectorQuery.data
   if (!connector) {
-    navigate(`/${orgSlug}/connectors`, { replace: true })
+    navigate('/connectors', { replace: true })
     return null
   }
 
@@ -377,8 +379,7 @@ export function ConnectorDetailPage() {
     <div className="flex flex-col h-full overflow-hidden">
       <TopBar
         crumbs={[
-          { label: orgSlug ?? '', to: `/${orgSlug}/connectors` },
-          { label: 'Connectors', to: `/${orgSlug}/connectors` },
+          { label: 'Connectors', to: '/connectors' },
           { label: connector.name },
         ]}
         actions={

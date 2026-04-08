@@ -51,7 +51,7 @@ async def register_user(
 
     org_name = (
         payload.get("org_name")
-        or f"{payload.get('full_name') or payload['email'].split('@')[0]}'s Workspace"
+        or f"{payload.get('full_name') or payload['email'].split('@')[0]}'s Organization"
     )
     org_slug = await _unique_slug(conn, _slugify(org_name))
     org_row = await conn.fetchrow(sql_orgs.insert_org(org_slug, org_name))

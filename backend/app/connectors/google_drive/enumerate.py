@@ -47,6 +47,10 @@ async def enumerate_google_drive(input: ConnectorEnumerateInput) -> ConnectorEnu
     )
     max_seen_mtime: str | None = checkpoint_modified_after
 
+    # When page_limit is set, fetch exactly one API page and return with the next cursor
+    # so the caller can save the cursor and resume on crash.
+    page_size = min(input.page_limit or 100, 100)  # Google Drive max pageSize is 100
+
     async with httpx.AsyncClient() as client:
         while True:
             remaining = max_documents - len(refs)
@@ -56,7 +60,7 @@ async def enumerate_google_drive(input: ConnectorEnumerateInput) -> ConnectorEnu
             params: dict[str, str] = {
                 "q": query_text,
                 "fields": "nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,owners,size)",
-                "pageSize": str(max(1, min(20, remaining))),
+                "pageSize": str(max(1, min(page_size, remaining))),
             }
             if page_token:
                 params["pageToken"] = page_token
@@ -144,7 +148,20 @@ async def enumerate_google_drive(input: ConnectorEnumerateInput) -> ConnectorEnu
                         ),
                     )
 
-            page_token = data.get("nextPageToken")
+            next_page_token = data.get("nextPageToken")
+
+            # When page_limit is set, return after one API page so the caller can
+            # persist the cursor before fetching the next page.
+            if input.page_limit is not None:
+                return ConnectorEnumerationResult(
+                    refs=refs,
+                    next_checkpoint=ConnectorCheckpoint(
+                        modified_after=max_seen_mtime,
+                        cursor=next_page_token,
+                    ),
+                )
+
+            page_token = next_page_token
             if not page_token:
                 break
 

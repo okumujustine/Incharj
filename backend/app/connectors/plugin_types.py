@@ -70,6 +70,7 @@ class ConnectorPluginContext:
 class ConnectorEnumerateInput(ConnectorPluginContext):
     config: dict[str, Any] = field(default_factory=dict)
     checkpoint: ConnectorCheckpoint | None = None
+    page_limit: int | None = None  # if set, return at most this many refs (one API page)
 
 
 @dataclass

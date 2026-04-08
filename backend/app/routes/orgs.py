@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -59,46 +58,6 @@ def _map_invitation(row: Any) -> dict:
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
     }
 
-
-@router.get("/orgs")
-async def orgs_list(current_user: dict = Depends(get_current_user)) -> list:
-    pool = await get_pool()
-    rows = await pool.fetch(sql_orgs.select_orgs_for_user(current_user["id"]))
-    return [_map_org(r) for r in rows]
-
-
-@router.post("/orgs", status_code=201)
-async def orgs_create(
-    request: Request, current_user: dict = Depends(get_current_user)
-) -> JSONResponse:
-    body = await request.json()
-
-    name = body.get("name", "").strip()
-    if not name:
-        return JSONResponse({"detail": "name is required"}, status_code=400)
-
-    def _slugify(v: str) -> str:
-        slug = re.sub(r"[^a-z0-9]+", "-", v.lower()).strip("-")
-        return slug[:50] or "org"
-
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        base_slug = _slugify(name)
-        slug = base_slug
-        counter = 1
-        while True:
-            exists = await conn.fetchrow(sql_orgs.check_org_slug_exists(slug))
-            if exists is None:
-                break
-            slug = f"{base_slug}-{counter}"
-            counter += 1
-
-        org_row = await conn.fetchrow(sql_orgs.insert_org(slug, name))
-        await conn.execute(
-            sql_orgs.insert_membership(org_row["id"], current_user["id"], "owner")
-        )
-
-    return JSONResponse(_map_org(org_row), status_code=201)
 
 
 @router.get("/orgs/{slug}")

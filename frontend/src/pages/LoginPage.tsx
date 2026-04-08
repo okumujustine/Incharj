@@ -22,7 +22,7 @@ export function LoginPage() {
 
     try {
       await login({ email, password })
-      navigate('/orgs')
+      navigate('/search', { replace: true })
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??

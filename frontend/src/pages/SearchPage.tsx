@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
 import {
   Search,
   ExternalLink,
@@ -11,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
+import { useOrgSlug } from '../hooks/useOrgSlug'
 import { useSearch } from '../hooks/useSearch'
 import { connectorsService } from '../services/connectors'
 import { TopBar } from '../components/layout/TopBar'
@@ -248,7 +248,7 @@ function Pagination({
 }
 
 export function SearchPage() {
-  const { orgSlug } = useParams<{ orgSlug: string }>()
+  const orgSlug = useOrgSlug()
   const inputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -271,12 +271,11 @@ export function SearchPage() {
     isFetching,
     isError,
     hasQuery,
-  } = useSearch({ orgSlug: orgSlug! })
+  } = useSearch({ orgSlug })
 
   const connectorsQuery = useQuery({
     queryKey: ['connectors', orgSlug],
-    queryFn: () => connectorsService.list(orgSlug!),
-    enabled: !!orgSlug,
+    queryFn: () => connectorsService.list(orgSlug),
     staleTime: 60 * 1000,
   })
 
@@ -318,7 +317,7 @@ export function SearchPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <TopBar
-        crumbs={[{ label: orgSlug ?? '' }, { label: 'Search' }]}
+        crumbs={[{ label: 'Search' }]}
       />
 
       {/* Search bar */}

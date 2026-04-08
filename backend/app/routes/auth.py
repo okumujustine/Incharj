@@ -6,7 +6,8 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.db.pool import get_pool
 from app.middleware.auth import get_current_user
-from app.services.auth_service import login_user, logout_session, refresh_session, register_user
+from app.services.auth_service import login_user, logout_session, refresh_session
+from app.sql import orgs as sql_orgs
 
 router = APIRouter()
 
@@ -25,22 +26,6 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
 
 def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(key=settings.refresh_cookie_name, path="/")
-
-
-@router.post("/auth/register", status_code=201)
-async def auth_register(request: Request) -> JSONResponse:
-    body = await request.json()
-    meta = {
-        "user_agent": request.headers.get("user-agent"),
-        "ip_address": request.client.host if request.client else None,
-    }
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        result = await register_user(conn, body, meta)
-
-    response = JSONResponse(content=result["token_response"], status_code=201)
-    _set_refresh_cookie(response, result["refresh_token"])
-    return response
 
 
 @router.post("/auth/login")
@@ -97,6 +82,18 @@ async def auth_logout(
 
 @router.get("/auth/me")
 async def auth_me(current_user: dict = Depends(get_current_user)) -> dict:
+    pool = await get_pool()
+    org_row = await pool.fetchrow(sql_orgs.select_user_primary_org(str(current_user["id"])))
+
+    org = None
+    if org_row:
+        org = {
+            "id": str(org_row["id"]),
+            "slug": org_row["slug"],
+            "name": org_row["name"],
+            "plan": org_row.get("plan"),
+        }
+
     return {
         "id": str(current_user["id"]),
         "email": current_user["email"],
@@ -105,4 +102,5 @@ async def auth_me(current_user: dict = Depends(get_current_user)) -> dict:
         "is_verified": current_user.get("is_verified"),
         "is_active": current_user.get("is_active"),
         "created_at": current_user["created_at"].isoformat() if current_user.get("created_at") else None,
+        "org": org,
     }

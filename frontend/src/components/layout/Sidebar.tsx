@@ -6,59 +6,26 @@ import {
   Settings,
   Files,
   ChevronDown,
-  Plus,
   LogOut,
   User,
-  Building2,
-  Check,
-  Sun,
-  Moon,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import { IncharjLogo } from '../ui/IncharjLogo'
 import { useAuth } from '../../hooks/useAuth'
-import { useTheme } from '../../hooks/useTheme'
-import { orgsService } from '../../services/orgs'
-import type { Organization } from '../../types'
 
-interface SidebarProps {
-  orgSlug: string
-}
+const navLinks = [
+  { to: '/search', icon: Search, label: 'Search' },
+  { to: '/files', icon: Files, label: 'Files' },
+  { to: '/connectors', icon: Plug, label: 'Connectors' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
+]
 
-export function Sidebar({ orgSlug }: SidebarProps) {
-  const { user, currentOrg, logout, setCurrentOrg } = useAuth()
-  const { theme, toggle: toggleTheme } = useTheme()
+export function Sidebar() {
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [orgMenuOpen, setOrgMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
-  const orgsQuery = useQuery({
-    queryKey: ['orgs'],
-    queryFn: orgsService.list,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const navLinks = [
-    { to: `/${orgSlug}/search`, icon: Search, label: 'Search' },
-    { to: `/${orgSlug}/files`, icon: Files, label: 'Files' },
-    { to: `/${orgSlug}/connectors`, icon: Plug, label: 'Connectors' },
-    { to: `/${orgSlug}/settings`, icon: Settings, label: 'Settings' },
-  ]
-
-  const handleOrgSwitch = (org: Organization) => {
-    setCurrentOrg(org)
-    setOrgMenuOpen(false)
-    navigate(`/${org.slug}/search`)
-  }
-
-  const initials = currentOrg?.name?.slice(0, 2).toUpperCase() ?? 'IN'
   const userInitials = user?.full_name
-    ? user.full_name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
+    ? user.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
     : user?.email?.slice(0, 2).toUpperCase() ?? '??'
 
   return (
@@ -66,73 +33,6 @@ export function Sidebar({ orgSlug }: SidebarProps) {
       {/* Logo */}
       <div className="px-3 h-12 xl:h-14 flex items-center border-b border-border">
         <IncharjLogo size={22} />
-      </div>
-
-      {/* Org Switcher */}
-      <div className="relative">
-        <button
-          onClick={() => setOrgMenuOpen((v) => !v)}
-          className="w-full flex items-center gap-2.5 px-3 h-12 xl:h-14 border-b border-border hover:bg-bg-elevated transition-colors"
-        >
-          <div className="w-6 h-6 rounded bg-accent/20 border border-accent/30 flex items-center justify-center text-accent text-xs font-bold flex-shrink-0">
-            {initials}
-          </div>
-          <span className="text-sm font-medium text-text-primary truncate flex-1 text-left">
-            {currentOrg?.name ?? 'Select Org'}
-          </span>
-          <ChevronDown size={12} className="text-text-muted flex-shrink-0" />
-        </button>
-
-        {orgMenuOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={() => setOrgMenuOpen(false)}
-            />
-            <div className="absolute top-full left-0 right-0 z-20 bg-bg-elevated border border-border shadow-xl">
-              <div className="py-1">
-                <p className="px-3 py-1.5 text-2xs text-text-muted uppercase tracking-wider font-mono">
-                  Organizations
-                </p>
-                {orgsQuery.data?.map((org) => (
-                  <button
-                    key={org.id}
-                    onClick={() => handleOrgSwitch(org)}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-bg-overlay text-sm text-text-secondary hover:text-text-primary transition-colors"
-                  >
-                    <Building2 size={14} className="flex-shrink-0" />
-                    <span className="flex-1 text-left truncate">{org.name}</span>
-                    {org.slug === orgSlug && (
-                      <Check size={12} className="text-accent flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
-                <div className="border-t border-border mt-1 pt-1">
-                  <button
-                    onClick={() => {
-                      setOrgMenuOpen(false)
-                      navigate('/orgs/new')
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-bg-overlay text-sm text-text-muted hover:text-text-primary transition-colors"
-                  >
-                    <Plus size={14} />
-                    New organization
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOrgMenuOpen(false)
-                      navigate('/orgs')
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-bg-overlay text-sm text-text-muted hover:text-text-primary transition-colors"
-                  >
-                    <Building2 size={14} />
-                    All organizations
-                  </button>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
       </div>
 
       {/* Nav Links */}
@@ -158,17 +58,6 @@ export function Sidebar({ orgSlug }: SidebarProps) {
         </div>
       </nav>
 
-      {/* Theme toggle */}
-      <div className="px-2 pb-2">
-        <button
-          onClick={toggleTheme}
-          className="w-full flex items-center gap-2.5 px-2.5 h-8 rounded text-sm text-text-muted hover:text-text-primary hover:bg-bg-elevated border border-transparent transition-colors"
-        >
-          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </button>
-      </div>
-
       {/* User Menu */}
       <div className="relative border-t border-border">
         <button
@@ -193,17 +82,11 @@ export function Sidebar({ orgSlug }: SidebarProps) {
 
         {userMenuOpen && (
           <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={() => setUserMenuOpen(false)}
-            />
+            <div className="fixed inset-0 z-10" onClick={() => setUserMenuOpen(false)} />
             <div className="absolute bottom-full left-0 right-0 z-20 bg-bg-elevated border border-border shadow-xl">
               <div className="py-1">
                 <button
-                  onClick={() => {
-                    setUserMenuOpen(false)
-                    navigate('/settings/profile')
-                  }}
+                  onClick={() => { setUserMenuOpen(false); navigate('/settings/profile') }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-bg-overlay text-sm text-text-secondary hover:text-text-primary transition-colors"
                 >
                   <User size={14} />
@@ -211,10 +94,7 @@ export function Sidebar({ orgSlug }: SidebarProps) {
                 </button>
                 <div className="border-t border-border mt-1 pt-1">
                   <button
-                    onClick={() => {
-                      setUserMenuOpen(false)
-                      logout()
-                    }}
+                    onClick={() => { setUserMenuOpen(false); logout() }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-bg-overlay text-sm text-error hover:text-error transition-colors"
                   >
                     <LogOut size={14} />

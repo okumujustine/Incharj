@@ -26,7 +26,7 @@ export function AcceptInvitePage() {
         const resolvedUser = data.user ?? await authService.me()
         setAuth(resolvedUser, data.access_token)
         setStatus('success')
-        setTimeout(() => navigate('/orgs'), 2000)
+        setTimeout(() => navigate('/search'), 2000)
       } catch (err: unknown) {
         const message =
           (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??

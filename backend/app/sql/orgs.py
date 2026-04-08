@@ -107,3 +107,20 @@ def select_pending_invitations(org_id):
 
 def check_org_slug_exists(slug: str):
     return select(organizations.c.id).where(organizations.c.slug == slug)
+
+
+def select_user_primary_org(user_id):
+    return (
+        select(
+            organizations.c.id,
+            organizations.c.slug,
+            organizations.c.name,
+            organizations.c.plan,
+            organizations.c.settings,
+            organizations.c.created_at,
+        )
+        .join(memberships, memberships.c.org_id == organizations.c.id)
+        .where(memberships.c.user_id == user_id)
+        .order_by(memberships.c.joined_at.asc())
+        .limit(1)
+    )

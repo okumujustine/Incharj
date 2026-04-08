@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import { useParams } from 'react-router-dom'
 import {
   ExternalLink,
   SlidersHorizontal,
@@ -11,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
+import { useOrgSlug } from '../hooks/useOrgSlug'
 import { connectorsService } from '../services/connectors'
 import { documentsService } from '../services/documents'
 import { TopBar } from '../components/layout/TopBar'
@@ -223,28 +223,26 @@ function Pagination({ page, totalPages, total, pageSize, onPageChange }: Paginat
 }
 
 export function FilesPage() {
-  const { orgSlug } = useParams<{ orgSlug: string }>()
+  const orgSlug = useOrgSlug()
   const [selectedConnector, setSelectedConnector] = useState('')
   const [selectedKind, setSelectedKind] = useState('')
   const [page, setPage] = useState(1)
 
   const connectorsQuery = useQuery({
     queryKey: ['connectors', orgSlug],
-    queryFn: () => connectorsService.list(orgSlug!),
-    enabled: !!orgSlug,
+    queryFn: () => connectorsService.list(orgSlug),
     staleTime: 60 * 1000,
   })
 
   const docsQuery = useQuery({
     queryKey: ['documents', orgSlug, selectedConnector, selectedKind, page],
     queryFn: () =>
-      documentsService.list(orgSlug!, {
+      documentsService.list(orgSlug, {
         connector_id: selectedConnector || undefined,
         kind: selectedKind || undefined,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       }),
-    enabled: !!orgSlug,
     staleTime: 30 * 1000,
     placeholderData: (prev) => prev,
   })
@@ -269,7 +267,7 @@ export function FilesPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <TopBar crumbs={[{ label: orgSlug ?? '' }, { label: 'Files' }]} />
+      <TopBar crumbs={[{ label: 'Files' }]} />
 
       <FiltersRow
         connectors={connectorsQuery.data ?? []}

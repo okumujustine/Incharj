@@ -75,14 +75,26 @@ def count_connector_docs(connector_id):
 
 
 def start_sync_job(sync_job_id):
+    # Reset all doc counters when the job starts so page-by-page enumeration
+    # can safely accumulate increments from early pages before the total is known.
     return (
         update(sync_jobs)
         .where(sync_jobs.c.id == sync_job_id)
-        .values(status="running", started_at=func.now(), error_message=None)
+        .values(
+            status="running",
+            started_at=func.now(),
+            error_message=None,
+            docs_enqueued=0,
+            docs_processed=0,
+            docs_indexed=0,
+            docs_skipped=0,
+            docs_errored=0,
+        )
     )
 
 
 def set_sync_job_enqueued(sync_job_id, docs_enqueued: int, meta_dict: dict | None):
+    # Legacy: used when all refs are collected up front before any tasks are dispatched.
     return (
         update(sync_jobs)
         .where(sync_jobs.c.id == sync_job_id)
@@ -94,6 +106,16 @@ def set_sync_job_enqueued(sync_job_id, docs_enqueued: int, meta_dict: dict | Non
             docs_errored=0,
             meta=meta_dict,
         )
+    )
+
+
+def set_docs_enqueued(sync_job_id, total: int, meta_dict: dict | None):
+    # Used after page-by-page enumeration completes: sets the final total without
+    # resetting counters that running document tasks have already incremented.
+    return (
+        update(sync_jobs)
+        .where(sync_jobs.c.id == sync_job_id)
+        .values(docs_enqueued=total, meta=meta_dict)
     )
 
 

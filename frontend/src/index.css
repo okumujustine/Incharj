@@ -7,30 +7,7 @@
     box-sizing: border-box;
   }
 
-  /* ── Dark theme (default) ── */
   :root {
-    --color-bg-primary:    10 10 10;
-    --color-bg-surface:    17 17 17;
-    --color-bg-elevated:   26 26 26;
-    --color-bg-overlay:    34 34 34;
-    --color-border:        42 42 42;
-    --color-border-subtle: 31 31 31;
-    --color-border-strong: 58 58 58;
-    --color-text-primary:  240 240 240;
-    --color-text-secondary:160 160 160;
-    --color-text-muted:    102 102 102;
-    --color-text-disabled: 68 68 68;
-    --color-accent:        79 156 249;
-    --color-accent-hover:  107 173 251;
-    --color-success:       34 197 94;
-    --color-warning:       245 158 11;
-    --color-error:         239 68 68;
-    --scrollbar-thumb:     #2a2a2a;
-    --scrollbar-track:     #0a0a0a;
-  }
-
-  /* ── Light theme ── */
-  .light {
     --color-bg-primary:    248 248 248;
     --color-bg-surface:    255 255 255;
     --color-bg-elevated:   242 242 242;

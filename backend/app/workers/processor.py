@@ -81,11 +81,15 @@ def _envelope_from_ref(
     )
 
 
+_ENUMERATE_PAGE_LIMIT = 100  # docs per enumerate call; checkpoint saved after each page
+
+
 async def process_enumerate_job(sync_job_id: str, connector_id: str) -> None:
     from app.db.pool import get_pool
 
     pool = await get_pool()
 
+    # Resets all doc counters so page-by-page increments from early pages are safe.
     await pool.execute(sql_jobs.start_sync_job(sync_job_id))
 
     connector_model = await _load_connector_model(pool, connector_id)
@@ -112,56 +116,76 @@ async def process_enumerate_job(sync_job_id: str, connector_id: str) -> None:
         checkpoint_row = await pool.fetchrow(
             sql_checkpoints.select_connector_checkpoint(connector_id)
         )
-        # SQLAlchemy returns JSONB checkpoint as dict directly
         checkpoint_data = checkpoint_row["checkpoint"] if checkpoint_row else None
-        checkpoint: ConnectorCheckpoint | None = None
+        current_checkpoint: ConnectorCheckpoint | None = None
         if isinstance(checkpoint_data, dict):
-            checkpoint = ConnectorCheckpoint(
+            current_checkpoint = ConnectorCheckpoint(
                 cursor=checkpoint_data.get("cursor"),
                 modified_after=checkpoint_data.get("modifiedAfter"),
             )
 
-        enumeration = await plugin.enumerate(
-            ConnectorEnumerateInput(
-                org_id=connector_model["org_id"],
-                connector_id=connector_model["id"],
-                credentials=credentials,
-                config=validated_config,
-                checkpoint=checkpoint,
+        retry_policy = provider.manifest.retry_policy
+        total_dispatched = 0
+        final_ckpt_data: dict | None = None
+
+        # Enumerate one page at a time, persisting the cursor after each page.
+        # If the worker crashes mid-enumeration the next job resumes from the last
+        # saved cursor instead of starting over.
+        while True:
+            enumeration = await plugin.enumerate(
+                ConnectorEnumerateInput(
+                    org_id=connector_model["org_id"],
+                    connector_id=connector_model["id"],
+                    credentials=credentials,
+                    config=validated_config,
+                    checkpoint=current_checkpoint,
+                    page_limit=_ENUMERATE_PAGE_LIMIT,
+                )
             )
-        )
 
-        refs = enumeration.refs
+            # Persist the cursor immediately so a crash here loses at most one page.
+            next_ckpt_data: dict | None = None
+            if enumeration.next_checkpoint:
+                next_ckpt_data = {
+                    "cursor": enumeration.next_checkpoint.cursor,
+                    "modifiedAfter": enumeration.next_checkpoint.modified_after,
+                }
+                await pool.execute(
+                    sql_checkpoints.upsert_connector_checkpoint(
+                        connector_id,
+                        connector_model["org_id"],
+                        next_ckpt_data,
+                        sync_job_id,
+                    )
+                )
+            final_ckpt_data = next_ckpt_data
 
-        next_ckpt_data = (
-            {
-                "cursor": enumeration.next_checkpoint.cursor,
-                "modifiedAfter": enumeration.next_checkpoint.modified_after,
-            }
-            if enumeration.next_checkpoint
-            else None
-        )
+            # Dispatch document tasks for this page immediately.
+            from app.workers.tasks.sync import sync_document
+            for ref in enumeration.refs:
+                sync_document.apply_async(
+                    args=[sync_job_id, connector_id, _ref_to_dict(ref)],
+                    task_id=f"sync-document-{sync_job_id}-{total_dispatched}",
+                    max_retries=retry_policy.max_attempts,
+                    countdown=0,
+                )
+                total_dispatched += 1
+
+            # No more pages — enumeration complete.
+            if not enumeration.next_checkpoint or not enumeration.next_checkpoint.cursor:
+                break
+
+            current_checkpoint = enumeration.next_checkpoint
+
+        # Set the authoritative total now that all pages are done.
+        # Document tasks may already be running and incrementing counters; this call
+        # does NOT reset those counters (uses set_docs_enqueued, not set_sync_job_enqueued).
         meta_dict = {
-            "checkpoint": next_ckpt_data,
-            "documents_enumerated": len(refs),
-            "documents_capped": len(refs),
-            "documents_truncated": 0,
+            "checkpoint": final_ckpt_data,
+            "documents_enumerated": total_dispatched,
             "document_limit_applied": validated_config.get("max_documents") or None,
         }
-        await pool.execute(
-            sql_jobs.set_sync_job_enqueued(sync_job_id, len(refs), meta_dict)
-        )
-
-        retry_policy = provider.manifest.retry_policy
-        for index, ref in enumerate(refs):
-            from app.workers.tasks.sync import sync_document
-
-            sync_document.apply_async(
-                args=[sync_job_id, connector_id, _ref_to_dict(ref)],
-                task_id=f"sync-document-{sync_job_id}-{index}",
-                max_retries=retry_policy.max_attempts,
-                countdown=0,
-            )
+        await pool.execute(sql_jobs.set_docs_enqueued(sync_job_id, total_dispatched, meta_dict))
 
         encrypted_credentials = (
             encrypt_credentials(credentials) if connector_model.get("credentials") else None
@@ -170,7 +194,7 @@ async def process_enumerate_job(sync_job_id: str, connector_id: str) -> None:
         from app.workers.tasks.sync import sync_finalize
 
         sync_finalize.apply_async(
-            args=[sync_job_id, connector_id, next_ckpt_data, encrypted_credentials],
+            args=[sync_job_id, connector_id, final_ckpt_data, encrypted_credentials],
             task_id=f"sync-finalize-{sync_job_id}",
             countdown=1,
         )
@@ -223,6 +247,45 @@ def _dict_to_ref(d: dict[str, Any]) -> ConnectorDocumentRef:
     )
 
 
+async def _is_doc_unchanged(pool, connector_id: str, ref) -> bool:
+    """Return True if the document is already indexed with the same source_last_modified_at.
+
+    When True the caller can skip the remote fetch entirely — the content hasn't changed.
+    """
+    if not ref.source_last_modified_at:
+        return False
+
+    from sqlalchemy import select as sa_select
+    from app.db.tables import documents as docs_t
+
+    row = await pool.fetchrow(
+        sa_select(docs_t.c.source_last_modified_at, docs_t.c.extraction_status)
+        .where(
+            docs_t.c.connector_id == connector_id,
+            docs_t.c.external_id == ref.external_id,
+        )
+        .limit(1)
+    )
+    if row is None or row["extraction_status"] != "succeeded":
+        return False
+
+    existing_mtime = row["source_last_modified_at"]
+    if existing_mtime is None:
+        return False
+
+    # Normalise both sides to UTC ISO strings for comparison.
+    existing_iso = existing_mtime.isoformat()
+    # Google returns e.g. "2024-01-15T10:30:00.000Z" — strip trailing Z for comparison.
+    ref_iso = ref.source_last_modified_at.replace("Z", "+00:00")
+    try:
+        from datetime import datetime, timezone
+        existing_dt = existing_mtime.astimezone(timezone.utc).replace(tzinfo=None)
+        ref_dt = datetime.fromisoformat(ref_iso).astimezone(timezone.utc).replace(tzinfo=None)
+        return existing_dt >= ref_dt
+    except Exception:
+        return existing_iso == ref.source_last_modified_at
+
+
 async def process_document_job(
     sync_job_id: str,
     connector_id: str,
@@ -241,6 +304,16 @@ async def process_document_job(
         await pool.execute(
             sql_jobs.increment_sync_job_doc_result(sync_job_id, 0, 0, 1)
         )
+        return
+
+    # Skip the remote fetch if the document hasn't changed since last index.
+    if await _is_doc_unchanged(pool, connector_id, ref):
+        log.debug(
+            "skipping unchanged document connector_id=%s external_id=%s",
+            connector_id,
+            ref.external_id,
+        )
+        await pool.execute(sql_jobs.increment_sync_job_doc_result(sync_job_id, 0, 1, 0))
         return
 
     provider = get_connector_provider(connector_model["kind"])
