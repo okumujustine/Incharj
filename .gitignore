@@ -1,26 +1,21 @@
 # Dependencies
 node_modules/
-backend/node_modules/
-frontend/node_modules/
 
 # Build outputs
 dist/
-backend/dist/
-frontend/dist/
-dist-electron/
 out/
 build/
 .next/
 
 # Vite / bundler cache
 .vite/
-frontend/.vite/
 *.tsbuildinfo
 
-# Python (legacy)
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
+.ruff_cache/
 .venv/
 venv/
 .uv/
@@ -36,7 +31,6 @@ venv/
 .env
 .env.local
 .env.*.local
-backend/.env
 
 # Docker TLS certs
 certs/
@@ -46,11 +40,10 @@ certs/
 .codex-skill-staging/
 
 # Celery runtime state
-backend/celerybeat-schedule
 celerybeat-schedule
 
 # uv
-backend/.python-version
+.python-version
 
 # macOS
 .DS_Store
@@ -77,6 +70,8 @@ coverage/
 .coverage
 htmlcov/
 .pytest_cache/
+
+test-documents/
 
 # OS
 Thumbs.db

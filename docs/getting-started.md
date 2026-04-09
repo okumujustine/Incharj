@@ -171,13 +171,13 @@ You need PostgreSQL 16 and Redis 7 running locally. Then:
 npm install
 
 # Start the API server
-cd backend && npm run dev
+cd apps/api && npm run dev
 
 # Start the worker (separate terminal)
-cd backend && npm run worker
+cd apps/api && npm run worker
 
 # Start the frontend (separate terminal)
-cd frontend && npm run dev
+cd apps/web && npm run dev
 
 # Start the docs (separate terminal)
 cd docs && npm run dev

@@ -7,17 +7,17 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
-from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import delete, func, insert, select, update
+from fastapi.responses import JSONResponse
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
 from app.db.pool import get_pool
-from app.db.tables import organizations, slack_installations
+from app.db.tables import connectors as connectors_t, slack_installations
 from app.errors import BadRequestError, NotFoundError
 from app.middleware.auth import get_current_membership, get_current_user
 from app.services.search_service import full_text_search
-from app.utils.security import decrypt_credentials, encrypt_credentials
+from app.utils.security import encrypt_credentials
 
 router = APIRouter()
 
@@ -177,35 +177,87 @@ async def slack_command(request: Request, background_tasks: BackgroundTasks) -> 
 # Slack OAuth install
 # ---------------------------------------------------------------------------
 
+_SLACK_SCOPES = ",".join([
+    "commands",
+    "chat:write",
+    "app_mentions:read",
+    "channels:history",
+    "channels:read",
+    "groups:history",
+    "groups:read",
+    "users:read",
+    "im:history",
+])
+
+
+def _make_state(user_id: str) -> str:
+    """Signed state token for CSRF protection: {user_id}:{ts}:{sig}."""
+    ts = str(int(time.time()))
+    payload = f"{user_id}:{ts}"
+    sig = hmac.new(
+        settings.app_secret.encode(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()[:24]
+    return f"{payload}:{sig}"
+
+
+def _verify_state(state: str, user_id: str, max_age: int = 600) -> bool:
+    try:
+        uid, ts, sig = state.rsplit(":", 2)
+        if uid != user_id:
+            return False
+        if abs(time.time() - int(ts)) > max_age:
+            return False
+        payload = f"{uid}:{ts}"
+        expected = hmac.new(
+            settings.app_secret.encode(),
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()[:24]
+        return hmac.compare_digest(expected, sig)
+    except Exception:
+        return False
+
+
 @router.get("/slack/oauth/install")
 async def slack_install(
-    request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
     """Return the Slack OAuth install URL. The frontend opens this in a new tab."""
     if not settings.slack_client_id:
-        raise BadRequestError("Slack integration is not configured")
+        raise BadRequestError("Slack integration is not configured on this server")
 
+    state = _make_state(str(current_user["id"]))
     redirect_uri = f"{settings.frontend_url}/slack/oauth/callback"
-    scopes = "commands,chat:write,app_mentions:read"
     url = (
-        f"https://slack.com/oauth/v2/authorize"
+        "https://slack.com/oauth/v2/authorize"
         f"?client_id={settings.slack_client_id}"
-        f"&scope={scopes}"
+        f"&scope={_SLACK_SCOPES}"
         f"&redirect_uri={redirect_uri}"
+        f"&state={state}"
     )
-    return {"url": url}
+    return {"url": url, "state": state}
 
 
-@router.get("/slack/oauth/callback")
+@router.post("/slack/oauth/callback")
 async def slack_oauth_callback(
-    request: Request,
+    body: dict,
     current_user: dict = Depends(get_current_user),
 ) -> JSONResponse:
-    """Exchange the Slack OAuth code for a bot token and save the installation."""
-    code = request.query_params.get("code")
+    """Exchange the Slack OAuth code for a bot token and save the installation.
+
+    The frontend receives ?code=...&state=... from Slack's redirect, then POSTs
+    both values here along with the original state for CSRF verification.
+    """
+    code: str = body.get("code", "")
+    state: str = body.get("state", "")
+
     if not code:
         raise BadRequestError("Missing OAuth code")
+
+    if not _verify_state(state, str(current_user["id"])):
+        raise BadRequestError("Invalid or expired state parameter")
 
     redirect_uri = f"{settings.frontend_url}/slack/oauth/callback"
 
@@ -218,6 +270,7 @@ async def slack_oauth_callback(
                 "code": code,
                 "redirect_uri": redirect_uri,
             },
+            timeout=15.0,
         )
 
     data = resp.json()
@@ -229,27 +282,24 @@ async def slack_oauth_callback(
     bot_token: str = data["access_token"]
     installed_by: str = data.get("authed_user", {}).get("id", "")
 
-    # Encrypt the bot token before storage.
-    encrypted_token = encrypt_credentials({"bot_token": bot_token})
-
-    # Resolve the org from the current user's membership.
     pool = await get_pool()
     from app.sql.orgs import select_user_primary_org
     org_row = await pool.fetchrow(select_user_primary_org(str(current_user["id"])))
     if not org_row:
         raise NotFoundError("No organization found for this user")
-
     org_id = str(org_row["id"])
 
-    stmt = pg_insert(slack_installations).values(
+    encrypted_token = encrypt_credentials({"bot_token": bot_token})
+
+    # Upsert into slack_installations (OAuth metadata + token per workspace).
+    install_stmt = pg_insert(slack_installations).values(
         org_id=org_id,
         team_id=team_id,
         team_name=team_name,
         bot_token=encrypted_token,
         installed_by_slack_user=installed_by,
         installed_at=func.now(),
-    )
-    stmt = stmt.on_conflict_do_update(
+    ).on_conflict_do_update(
         index_elements=[slack_installations.c.team_id],
         set_={
             "org_id": org_id,
@@ -259,7 +309,17 @@ async def slack_oauth_callback(
             "installed_at": func.now(),
         },
     )
-    await pool.execute(stmt)
+    await pool.execute(install_stmt)
+
+    # Also push the token into the Slack connector row so the indexer picks it up.
+    await pool.execute(
+        update(connectors_t)
+        .where(
+            connectors_t.c.org_id == org_id,
+            connectors_t.c.kind == "slack",
+        )
+        .values(credentials=encrypted_token, status="idle", updated_at=func.now())
+    )
 
     return JSONResponse({"ok": True, "team": team_name})
 

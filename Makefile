@@ -1,67 +1,64 @@
-.PHONY: help dev dev-services stop migrate db-shell api-shell worker frontend \
-        build up down logs lint test generate-keys
+.PHONY: help setup dev-services api worker web bot db-shell build up down logs generate-keys
 
-# ── Help ──────────────────────────────────────────────────────────────────────
 help:
 	@echo ""
 	@echo "  Incharj — Development Commands"
 	@echo ""
 	@echo "  Setup:"
-	@echo "    make setup          Install all deps (backend + frontend)"
-	@echo "    make generate-keys  Generate SECRET_KEY and FERNET_KEY"
-	@echo "    make migrate        No-op (DB schema auto-initializes on startup)"
+	@echo "    make setup           Install all dependencies"
+	@echo "    make generate-keys   Generate APP_SECRET and ENCRYPTION_KEY values"
 	@echo ""
-	@echo "  Development:"
-	@echo "    make dev-services   Start postgres + redis via Docker"
-	@echo "    make api            Start TypeScript API with hot-reload"
-	@echo "    make worker         Start TypeScript sync worker"
-	@echo "    make frontend       Start Vite dev server"
-	@echo "    make dev            Start everything (3 terminals required)"
+	@echo "  Development (run each in its own terminal):"
+	@echo "    make dev-services    Start postgres + redis via Docker"
+	@echo "    make api             Start FastAPI with hot-reload  (:8000)"
+	@echo "    make worker          Start Celery worker"
+	@echo "    make web             Start Vite dev server          (:3000)"
+	@echo "    make bot             Start Slack bot"
 	@echo ""
-	@echo "  Docker (production):"
-	@echo "    make build          Build all Docker images"
-	@echo "    make up             Start all services"
-	@echo "    make down           Stop all services"
-	@echo "    make logs           Tail all logs"
+	@echo "  Docker:"
+	@echo "    make build           Build all Docker images"
+	@echo "    make up              Start all services"
+	@echo "    make down            Stop all services"
+	@echo "    make logs            Tail all logs"
+	@echo ""
+	@echo "  Utilities:"
+	@echo "    make db-shell        Open psql shell"
 	@echo ""
 
-# ── Setup ─────────────────────────────────────────────────────────────────────
 setup:
-	@echo "Installing backend deps..."
-	cd backend && npm install
-	@echo "Installing frontend deps..."
-	cd frontend && npm install
-	@echo "Done. Copy .env.example to .env and fill in values."
-	@cp -n .env.example .env 2>/dev/null || true
+	@echo "Installing API deps (uv)..."
+	cd apps/api && uv sync
+	@echo "Installing bot deps (uv)..."
+	cd apps/bot && uv sync
+	@echo "Installing web deps (npm)..."
+	cd apps/web && npm install
+	@echo "Installing docs deps (npm)..."
+	cd docs && npm install
+	@cp -n .env.example .env 2>/dev/null && echo "Copied .env.example → .env" || echo ".env already exists"
 
 generate-keys:
-	@echo "SECRET_KEY=$$(openssl rand -hex 32)"
-	@echo "FERNET_KEY=$$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+	@echo "APP_SECRET=$$(openssl rand -hex 32)"
+	@echo "ENCRYPTION_KEY=$$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
 
-# ── Development ───────────────────────────────────────────────────────────────
 dev-services:
-	docker compose -f docker-compose.dev.yml up -d
-	@echo "Postgres on :5432, Redis on :6379"
-
-migrate:
-	@echo "Database schema now auto-initializes when the TypeScript API starts."
+	docker compose -f docker-compose.dev.yml up -d postgres redis
+	@echo "Postgres :5432  Redis :6379"
 
 api:
-	cd backend && npm run dev
+	cd apps/api && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 worker:
-	cd backend && npm run worker
+	cd apps/api && uv run celery -A app.workers.celery_app worker --loglevel=info -Q sync_orchestration,sync_documents
 
-frontend:
-	cd frontend && npm run dev
+web:
+	cd apps/web && npm run dev
+
+bot:
+	cd apps/bot && uv run python main.py
 
 db-shell:
 	docker compose -f docker-compose.dev.yml exec postgres psql -U incharj -d incharj_dev
 
-api-shell:
-	cd backend && node -e "console.log('TypeScript backend available')"
-
-# ── Docker production ─────────────────────────────────────────────────────────
 build:
 	docker compose build
 
@@ -73,11 +70,3 @@ down:
 
 logs:
 	docker compose logs -f
-
-# ── Quality ───────────────────────────────────────────────────────────────────
-lint:
-	cd backend && npm run typecheck
-	cd frontend && npm run lint
-
-test:
-	cd backend && npm run build

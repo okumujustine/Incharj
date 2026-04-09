@@ -3,17 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "backend",
-    "frontend",
+    "apps/web",
     "docs"
   ],
   "scripts": {
-    "dev:api": "npm run dev --workspace=backend",
-    "dev:worker": "npm run worker --workspace=backend",
-    "dev:web": "npm run dev --workspace=frontend",
+    "dev:web": "npm run dev --workspace=apps/web",
     "dev:docs": "npm run dev --workspace=docs",
-    "build": "npm run build --workspaces",
-    "build:docs": "npm run build --workspace=docs",
-    "typecheck": "npm run typecheck --workspace=backend"
+    "build:web": "npm run build --workspace=apps/web",
+    "build:docs": "npm run build --workspace=docs"
   }
 }

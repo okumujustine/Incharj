@@ -17,6 +17,13 @@ let failedQueue: Array<{
   reject: (error: unknown) => void
 }> = []
 
+const REFRESH_EXCLUDED_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/logout',
+]
+
 function processQueue(error: unknown, token: string | null = null) {
   failedQueue.forEach((prom) => {
     if (error) {
@@ -26,6 +33,13 @@ function processQueue(error: unknown, token: string | null = null) {
     }
   })
   failedQueue = []
+}
+
+function shouldAttemptRefresh(config?: AxiosRequestConfig & { _retry?: boolean }) {
+  if (!config || config._retry) return false
+
+  const url = config.url ?? ''
+  return !REFRESH_EXCLUDED_PATHS.some((path) => url.includes(path))
 }
 
 // Request interceptor: inject access token
@@ -46,7 +60,7 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean }
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && shouldAttemptRefresh(originalRequest)) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })
