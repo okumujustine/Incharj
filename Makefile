@@ -1,5 +1,7 @@
 .PHONY: help setup dev-services api worker web bot db-shell build up down logs generate-keys
 
+SECRETS_RUN = node ./scripts/run-with-secrets.mjs --
+
 help:
 	@echo ""
 	@echo "  Incharj — Development Commands"
@@ -7,6 +9,16 @@ help:
 	@echo "  Setup:"
 	@echo "    make setup           Install all dependencies"
 	@echo "    make generate-keys   Generate APP_SECRET and ENCRYPTION_KEY values"
+	@echo ""
+	@echo "  Secrets Bootstrap:"
+	@echo "    SECRETS_PROVIDER"
+	@echo "    Current provider: infisical"
+	@echo "    INFISICAL_CLIENT_ID"
+	@echo "    INFISICAL_CLIENT_SECRET"
+	@echo "    INFISICAL_PROJECT_ID"
+	@echo "    INFISICAL_ENVIRONMENT"
+	@echo "    INFISICAL_SECRET_PATH"
+	@echo "    INFISICAL_SITE_URL (optional)"
 	@echo ""
 	@echo "  Development (run each in its own terminal):"
 	@echo "    make dev-services    Start postgres + redis via Docker"
@@ -34,7 +46,7 @@ setup:
 	cd apps/web && npm install
 	@echo "Installing docs deps (npm)..."
 	cd docs && npm install
-	@cp -n .env.example .env 2>/dev/null && echo "Copied .env.example → .env" || echo ".env already exists"
+	@echo "Use docs/runtime-configuration.md for the runtime variable checklist."
 
 generate-keys:
 	@echo "APP_SECRET=$$(openssl rand -hex 32)"
@@ -45,28 +57,28 @@ dev-services:
 	@echo "Postgres :5432  Redis :6379"
 
 api:
-	cd apps/api && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+	cd apps/api && node ../../scripts/run-with-secrets.mjs -- uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 worker:
-	cd apps/api && uv run celery -A app.workers.celery_app worker --loglevel=info -Q sync_orchestration,sync_documents
+	cd apps/api && node ../../scripts/run-with-secrets.mjs -- uv run celery -A app.workers.celery_app worker --loglevel=info -Q sync_orchestration,sync_documents
 
 web:
-	cd apps/web && npm run dev
+	cd apps/web && node ../../scripts/run-with-secrets.mjs -- npm run dev
 
 bot:
-	cd apps/bot && uv run python main.py
+	cd apps/bot && node ../../scripts/run-with-secrets.mjs -- uv run python main.py
 
 db-shell:
 	docker compose -f docker-compose.dev.yml exec postgres psql -U incharj -d incharj_dev
 
 build:
-	docker compose build
+	docker compose -f docker-compose.dev.yml build
 
 up:
-	docker compose up -d
+	$(SECRETS_RUN) docker compose -f docker-compose.dev.yml up -d
 
 down:
-	docker compose down
+	docker compose -f docker-compose.dev.yml down
 
 logs:
-	docker compose logs -f
+	docker compose -f docker-compose.dev.yml logs -f

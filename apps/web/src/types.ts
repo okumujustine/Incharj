@@ -40,7 +40,7 @@ export interface Connector {
 export interface SyncJob {
   id: string
   connector_id: string
-  status: 'pending' | 'running' | 'done' | 'failed'
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
   triggered_by: string
   started_at: string | null
   finished_at: string | null
@@ -117,6 +117,12 @@ export interface ApiError {
 }
 
 export interface LoginPayload {
+  email: string
+  password: string
+}
+
+export interface RegisterPayload {
+  full_name: string
   email: string
   password: string
 }

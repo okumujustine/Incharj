@@ -7,9 +7,13 @@
     "docs"
   ],
   "scripts": {
+    "secrets:run": "node ./scripts/run-with-secrets.mjs",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:docs": "npm run dev --workspace=docs",
     "build:web": "npm run build --workspace=apps/web",
     "build:docs": "npm run build --workspace=docs"
+  },
+  "dependencies": {
+    "@infisical/sdk": "^5.0.0"
   }
 }

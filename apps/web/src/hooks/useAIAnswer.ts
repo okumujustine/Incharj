@@ -93,7 +93,8 @@ async function stream(
   startRef: React.MutableRefObject<number>
 ) {
   try {
-    const apiBase = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_URL ?? ''
+    const apiBase = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_URL
+    if (!apiBase) throw new Error('VITE_API_URL is required')
     const response = await fetch(`${apiBase}/api/v1/search/ai-stream`, {
       method: 'POST',
       headers: {

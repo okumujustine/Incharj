@@ -29,23 +29,33 @@ cd apps/api
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
-uvicorn app.main:app --reload --port 8100
 ```
 
-## Run with Infisical
-Store environment-specific settings and secrets in Infisical, then inject them into the process at startup. The application already reads configuration from environment variables via `app.core.config.Settings`, so no direct Infisical SDK integration is required.
+Application variables still come from the process environment, but local
+development can now populate them through the repo's generic secrets bootstrap
+runner.
+
+## Run with Secrets Bootstrap
+Provide the bootstrap variables required by the current secrets provider from
+your shell, CI, or container runtime. The current provider is Infisical, but the
+entrypoint stays the same even if the provider changes later.
 
 ```bash
 cd apps/api
-infisical run --env=dev --path=/backend -- uvicorn app.main:app --reload --port 8100
+node ../../scripts/run-with-secrets.mjs -- uv run uvicorn app.main:app --reload --port 8000
 ```
 
 ## Run worker
 ```bash
 cd apps/api
-source .venv/bin/activate
-celery -A app.workers.celery_app.celery_app worker -l info
+node ../../scripts/run-with-secrets.mjs -- uv run celery -A app.workers.celery_app worker -l info -Q sync_orchestration,sync_documents
 ```
+
+Use [docs/runtime-configuration.md](../../docs/runtime-configuration.md) as the
+variable checklist for both the bootstrap settings and the application variables
+that need to exist in the current secrets service. For integrations you are not
+using yet, store empty-string values so startup validation still has an explicit
+value to read.
 
 ## Migration rule
 Do not route production traffic here until parity tests pass.

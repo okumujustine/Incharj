@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { authService } from '../services/auth'
-import type { LoginPayload } from '../types'
+import type { LoginPayload, RegisterPayload } from '../types'
 
 export function useAuth() {
   const navigate = useNavigate()
@@ -17,6 +17,13 @@ export function useAuth() {
       return userData
     },
     [setAuth]
+  )
+
+  const register = useCallback(
+    async (payload: RegisterPayload) => {
+      return authService.register(payload)
+    },
+    []
   )
 
   const logout = useCallback(async () => {
@@ -38,6 +45,7 @@ export function useAuth() {
     currentOrg,
     isAuthenticated,
     login,
+    register,
     logout,
     setCurrentOrg,
   }

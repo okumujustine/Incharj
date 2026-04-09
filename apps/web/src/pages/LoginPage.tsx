@@ -5,19 +5,19 @@ import { IncharjLogo } from '../components/ui/IncharjLogo'
 import { useAuth } from '../hooks/useAuth'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { useToastStore } from '../stores/toastStore'
 
 export function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
+  const showToast = useToastStore((state) => state.showToast)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError('')
     setIsLoading(true)
 
     try {
@@ -27,7 +27,11 @@ export function LoginPage() {
       const message =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         'Invalid email or password'
-      setError(message)
+      showToast({
+        variant: 'error',
+        title: 'Sign in failed',
+        description: message,
+      })
     } finally {
       setIsLoading(false)
     }
@@ -75,12 +79,6 @@ export function LoginPage() {
                 </button>
               }
             />
-
-            {error && (
-              <div className="bg-error/10 border border-error/20 rounded px-3 py-2">
-                <p className="text-xs text-error">{error}</p>
-              </div>
-            )}
 
             <Button
               type="submit"
