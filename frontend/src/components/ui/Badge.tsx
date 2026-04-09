@@ -41,13 +41,13 @@ export function Badge({ variant = 'default', children, className = '', pulse = f
 }
 
 export function StatusBadge({ status }: { status: 'idle' | 'syncing' | 'error' | 'paused' }) {
+  if (status === 'idle') return null
   const config: Record<string, { variant: BadgeVariant; label: string; pulse: boolean }> = {
-    idle: { variant: 'default', label: 'Idle', pulse: false },
     syncing: { variant: 'syncing', label: 'Syncing', pulse: true },
     error: { variant: 'error', label: 'Error', pulse: false },
     paused: { variant: 'warning', label: 'Paused', pulse: false },
   }
-  const { variant, label, pulse } = config[status] ?? config.idle
+  const { variant, label, pulse } = config[status] ?? { variant: 'default' as BadgeVariant, label: status, pulse: false }
   return <Badge variant={variant} pulse={pulse}>{label}</Badge>
 }
 

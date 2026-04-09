@@ -2,11 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { AppLayout } from './components/layout/AppLayout'
 import { LoginPage } from './pages/LoginPage'
-import { RegisterPage } from './pages/RegisterPage'
+import { SetupPage } from './pages/SetupPage'
 import { AcceptInvitePage } from './pages/AcceptInvitePage'
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage'
-import { OrgSelectorPage } from './pages/OrgSelectorPage'
-import { CreateOrgPage } from './pages/CreateOrgPage'
 import { SearchPage } from './pages/SearchPage'
 import { FilesPage } from './pages/FilesPage'
 import { ConnectorsPage } from './pages/ConnectorsPage'
@@ -17,13 +15,24 @@ import {
   MembersSettingsPage,
 } from './pages/SettingsPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { SlackCallbackPage } from './pages/SlackCallbackPage'
 
 export default function App() {
   return (
     <Routes>
+      {/* First-run setup */}
+      <Route path="/setup" element={<SetupPage />} />
+
       {/* Public routes */}
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route
+        path="/slack/oauth/callback"
+        element={
+          <AuthGuard>
+            <SlackCallbackPage />
+          </AuthGuard>
+        }
+      />
       <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
       <Route
         path="/oauth/:kind/callback"
@@ -34,35 +43,26 @@ export default function App() {
         }
       />
 
-      {/* Protected routes */}
+      {/* App routes — no org slug in URL */}
       <Route
-        path="/"
         element={
           <AuthGuard>
-            <Navigate to="/orgs" replace />
+            <AppLayout />
           </AuthGuard>
         }
-      />
+      >
+        <Route path="/" element={<Navigate to="/search" replace />} />
+        <Route path="/search" element={<SearchPage />} />
+        <Route path="/files" element={<FilesPage />} />
+        <Route path="/connectors" element={<ConnectorsPage />} />
+        <Route path="/connectors/:id" element={<ConnectorDetailPage />} />
+        <Route path="/settings" element={<SettingsLayout />}>
+          <Route index element={<GeneralSettingsPage />} />
+          <Route path="members" element={<MembersSettingsPage />} />
+        </Route>
+      </Route>
 
-      <Route
-        path="/orgs"
-        element={
-          <AuthGuard>
-            <OrgSelectorPage />
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/orgs/new"
-        element={
-          <AuthGuard>
-            <CreateOrgPage />
-          </AuthGuard>
-        }
-      />
-
-      {/* Profile (no sidebar layout) */}
+      {/* Profile (no sidebar) */}
       <Route
         path="/settings/profile"
         element={
@@ -73,26 +73,6 @@ export default function App() {
           </AuthGuard>
         }
       />
-
-      {/* Org-scoped routes with sidebar layout */}
-      <Route
-        path="/:orgSlug"
-        element={
-          <AuthGuard>
-            <AppLayout />
-          </AuthGuard>
-        }
-      >
-        <Route index element={<Navigate to="search" replace />} />
-        <Route path="search" element={<SearchPage />} />
-        <Route path="files" element={<FilesPage />} />
-        <Route path="connectors" element={<ConnectorsPage />} />
-        <Route path="connectors/:id" element={<ConnectorDetailPage />} />
-        <Route path="settings" element={<SettingsLayout />}>
-          <Route index element={<GeneralSettingsPage />} />
-          <Route path="members" element={<MembersSettingsPage />} />
-        </Route>
-      </Route>
 
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />

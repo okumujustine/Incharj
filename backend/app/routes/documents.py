@@ -53,7 +53,8 @@ async def documents_list(
     connector_id: Optional[str] = Query(default=None),
     kind: Optional[str] = Query(default=None),
     ext: Optional[str] = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    status: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     current_user: dict = Depends(get_current_user),
 ) -> dict:
@@ -71,6 +72,8 @@ async def documents_list(
         stmt = stmt.where(documents_t.c.kind == kind)
     if ext:
         stmt = stmt.where(documents_t.c.ext == ext)
+    if status:
+        stmt = stmt.where(documents_t.c.extraction_status == status)
     stmt = stmt.order_by(documents_t.c.indexed_at.desc()).limit(limit).offset(offset)
 
     # Build count query with same filters
@@ -83,6 +86,8 @@ async def documents_list(
         count_stmt = count_stmt.where(documents_t.c.kind == kind)
     if ext:
         count_stmt = count_stmt.where(documents_t.c.ext == ext)
+    if status:
+        count_stmt = count_stmt.where(documents_t.c.extraction_status == status)
 
     pool = await get_pool()
     rows = await pool.fetch(stmt)

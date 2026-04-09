@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
-import { NavLink, Outlet, useParams, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useOrgSlug } from '../hooks/useOrgSlug'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Users, Trash2, UserMinus, Mail, Crown } from 'lucide-react'
 import { orgsService } from '../services/orgs'
+import { slackService } from '../services/slack'
 import { useAuth } from '../hooks/useAuth'
 import { TopBar } from '../components/layout/TopBar'
 import { Button } from '../components/ui/Button'
@@ -12,16 +14,14 @@ import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 
 export function SettingsLayout() {
-  const { orgSlug } = useParams<{ orgSlug: string }>()
-
   const tabs = [
-    { to: `/${orgSlug}/settings`, label: 'General', end: true },
-    { to: `/${orgSlug}/settings/members`, label: 'Members' },
+    { to: `/settings`, label: 'General', end: true },
+    { to: `/settings/members`, label: 'Members' },
   ]
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <TopBar crumbs={[{ label: orgSlug ?? '' }, { label: 'Settings' }]} />
+      <TopBar crumbs={[{ label: 'Settings' }]} />
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="max-w-3xl mx-auto p-6">
@@ -53,15 +53,96 @@ export function SettingsLayout() {
   )
 }
 
+function SlackIntegrationCard({ orgSlug }: { orgSlug: string }) {
+  const queryClient = useQueryClient()
+
+  const installationQuery = useQuery({
+    queryKey: ['slack-installation', orgSlug],
+    queryFn: () => slackService.getInstallation(orgSlug),
+  })
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      const url = await slackService.getInstallUrl()
+      const tab = window.open(url, '_blank')
+      // Poll until the tab closes, then refresh the installation status.
+      return new Promise<void>((resolve) => {
+        const timer = setInterval(() => {
+          if (tab?.closed) {
+            clearInterval(timer)
+            queryClient.invalidateQueries({ queryKey: ['slack-installation', orgSlug] })
+            resolve()
+          }
+        }, 1000)
+      })
+    },
+  })
+
+  const disconnectMutation = useMutation({
+    mutationFn: () => slackService.disconnect(orgSlug),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['slack-installation', orgSlug] }),
+  })
+
+  const installation = installationQuery.data
+
+  return (
+    <div className="bg-bg-surface border border-border rounded">
+      <div className="px-5 py-4 border-b border-border">
+        <h2 className="text-sm font-semibold text-text-primary">Slack</h2>
+        <p className="text-xs text-text-muted mt-0.5">
+          Let your team search Incharj directly from Slack using <code className="font-mono">/incharj</code>.
+        </p>
+      </div>
+      <div className="p-5 flex items-center justify-between gap-4">
+        {installationQuery.isLoading ? (
+          <Spinner size={16} />
+        ) : installation?.connected ? (
+          <>
+            <div>
+              <p className="text-sm text-text-primary font-medium">{installation.team_name}</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                Connected · workspace <span className="font-mono">{installation.team_id}</span>
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              isLoading={disconnectMutation.isPending}
+              onClick={() => {
+                if (confirm('Disconnect Slack? The /incharj command will stop working.')) {
+                  disconnectMutation.mutate()
+                }
+              }}
+            >
+              Disconnect
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-text-muted">Not connected</p>
+            <Button
+              variant="primary"
+              size="sm"
+              isLoading={connectMutation.isPending}
+              onClick={() => connectMutation.mutate()}
+            >
+              Connect Slack
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function GeneralSettingsPage() {
-  const { orgSlug } = useParams<{ orgSlug: string }>()
+  const orgSlug = useOrgSlug()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const orgQuery = useQuery({
     queryKey: ['org', orgSlug],
-    queryFn: () => orgsService.get(orgSlug!),
-    enabled: !!orgSlug,
+    queryFn: () => orgsService.get(orgSlug),
   })
 
   const [orgName, setOrgName] = useState('')
@@ -73,7 +154,7 @@ export function GeneralSettingsPage() {
   }, [orgQuery.data])
 
   const updateOrg = useMutation({
-    mutationFn: (name: string) => orgsService.update(orgSlug!, { name }),
+    mutationFn: (name: string) => orgsService.update(orgSlug, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org', orgSlug] })
       setNameSuccess(true)
@@ -88,10 +169,10 @@ export function GeneralSettingsPage() {
   })
 
   const deleteOrg = useMutation({
-    mutationFn: () => orgsService.delete(orgSlug!),
+    mutationFn: () => orgsService.delete(orgSlug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orgs'] })
-      navigate('/orgs')
+      navigate('/search')
     },
   })
 
@@ -168,6 +249,9 @@ export function GeneralSettingsPage() {
         </div>
       </div>
 
+      {/* Slack integration */}
+      <SlackIntegrationCard orgSlug={orgSlug} />
+
       {/* Danger zone */}
       <div className="bg-bg-surface border border-error/20 rounded">
         <div className="px-5 py-4 border-b border-error/20">
@@ -206,20 +290,18 @@ export function GeneralSettingsPage() {
 }
 
 export function MembersSettingsPage() {
-  const { orgSlug } = useParams<{ orgSlug: string }>()
+  const orgSlug = useOrgSlug()
   const { user } = useAuth()
   const queryClient = useQueryClient()
 
   const membersQuery = useQuery({
     queryKey: ['org-members', orgSlug],
-    queryFn: () => orgsService.listMembers(orgSlug!),
-    enabled: !!orgSlug,
+    queryFn: () => orgsService.listMembers(orgSlug),
   })
 
   const invitationsQuery = useQuery({
     queryKey: ['org-invitations', orgSlug],
-    queryFn: () => orgsService.listInvitations(orgSlug!),
-    enabled: !!orgSlug,
+    queryFn: () => orgsService.listInvitations(orgSlug),
   })
 
   const [inviteEmail, setInviteEmail] = useState('')
@@ -229,7 +311,7 @@ export function MembersSettingsPage() {
 
   const inviteMutation = useMutation({
     mutationFn: () =>
-      orgsService.invite(orgSlug!, { email: inviteEmail, role: inviteRole }),
+      orgsService.invite(orgSlug, { email: inviteEmail, role: inviteRole }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-invitations', orgSlug] })
       setInviteSuccess(`Invitation sent to ${inviteEmail}`)
@@ -245,13 +327,13 @@ export function MembersSettingsPage() {
   })
 
   const removeMember = useMutation({
-    mutationFn: (userId: string) => orgsService.removeMember(orgSlug!, userId),
+    mutationFn: (userId: string) => orgsService.removeMember(orgSlug, userId),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['org-members', orgSlug] }),
   })
 
   const revokeInvitation = useMutation({
-    mutationFn: (invId: string) => orgsService.revokeInvitation(orgSlug!, invId),
+    mutationFn: (invId: string) => orgsService.revokeInvitation(orgSlug, invId),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['org-invitations', orgSlug] }),
   })

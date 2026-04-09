@@ -17,3 +17,4 @@ def get_connector_provider(kind: str) -> ConnectorProvider:
 
 def load_connectors() -> None:
     import app.connectors.google_drive.index  # noqa: F401
+    import app.connectors.slack.index  # noqa: F401

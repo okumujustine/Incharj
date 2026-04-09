@@ -232,14 +232,10 @@ def dispatch_due_connectors():
     return select(connectors.c.id, connectors.c.org_id).where(
         connectors.c.status != "paused",
         connectors.c.credentials.isnot(None),
-        (
-            connectors.c.last_synced_at.is_(None)
-            | (
-                connectors.c.last_synced_at
-                + cast(connectors.c.sync_frequency, INTERVAL)
-                < func.now()
-            )
-        ),
+        # Only auto-sync connectors that have been manually synced at least once.
+        # New connectors (last_synced_at IS NULL) must be started manually.
+        connectors.c.last_synced_at.isnot(None),
+        connectors.c.last_synced_at + cast(connectors.c.sync_frequency, INTERVAL) < func.now(),
         not_(recent_job.exists()),
     )
 

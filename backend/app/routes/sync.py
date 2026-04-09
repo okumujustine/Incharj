@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 import app.sql.sync_jobs as sql_jobs
 from app.db.pool import get_pool
@@ -208,3 +208,26 @@ async def sync_job_cancel(
     celery_app.control.revoke(f"sync-finalize-{job_id}", terminate=True, signal="SIGTERM")
 
     return {"id": job_id, "status": "cancelled"}
+
+
+@router.delete("/sync/jobs", status_code=204)
+async def sync_history_clear(
+    org: Optional[str] = Query(default=None),
+    connector_id: Optional[str] = Query(default=None),
+    current_user: dict = Depends(get_current_user),
+) -> None:
+    """Delete all completed sync jobs for a connector. Running jobs are not deleted."""
+    if not org or not connector_id:
+        return
+
+    membership = await get_current_membership(org, str(current_user["id"]))
+    from app.middleware.auth import require_role
+    require_role(membership, ["owner", "admin"])
+
+    pool = await get_pool()
+    stmt = delete(sync_jobs_t).where(
+        sync_jobs_t.c.org_id == membership["org_id"],
+        sync_jobs_t.c.connector_id == connector_id,
+        sync_jobs_t.c.status.in_(["done", "failed", "cancelled"]),
+    )
+    await pool.execute(stmt)

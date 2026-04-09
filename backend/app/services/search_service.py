@@ -191,7 +191,7 @@ async def _apply_semantic_rerank(
         doc_id = str(row["document_id"])
         best = best_chunk_by_doc.get(doc_id)
         if best is None or sim > best["similarity"]:
-            best_chunk_by_doc[doc_id] = {"similarity": sim, "content": row["content"]}
+            best_chunk_by_doc[doc_id] = {"similarity": float(sim), "content": row["content"]}
 
     lexical_max = max((r["score"] for r in results), default=0.0)
     if lexical_max <= 0:
@@ -204,7 +204,7 @@ async def _apply_semantic_rerank(
         semantic_norm = max(0.0, min(1.0, (semantic["similarity"] + 1) / 2)) if semantic else 0.0
         reranked.append({
             **r,
-            "score": lexical_norm * 0.6 + semantic_norm * 0.4,
+            "score": float(lexical_norm * 0.6 + semantic_norm * 0.4),
             "snippet": semantic["content"][:320] if semantic else r["snippet"],
         })
 

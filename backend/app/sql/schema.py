@@ -1,4 +1,4 @@
-DDL_EXTENSIONS = ["pgcrypto", "pg_trgm", "unaccent"]
+DDL_EXTENSIONS = ["vector", "pgcrypto", "pg_trgm", "unaccent"]
 
 DDL_INITIALIZE = """
     CREATE TABLE IF NOT EXISTS users (
@@ -221,6 +221,18 @@ DDL_INITIALIZE = """
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS ix_connector_sync_state_org_id ON connector_sync_state(org_id);
+
+    CREATE TABLE IF NOT EXISTS slack_installations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      team_id TEXT NOT NULL UNIQUE,
+      team_name TEXT,
+      bot_token TEXT NOT NULL,
+      installed_by_slack_user TEXT,
+      installed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_slack_installations_org_id ON slack_installations(org_id);
+    CREATE INDEX IF NOT EXISTS ix_slack_installations_team_id ON slack_installations(team_id);
 
     CREATE TABLE IF NOT EXISTS embedding_cache (
       cache_key TEXT PRIMARY KEY,

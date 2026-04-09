@@ -25,9 +25,15 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
+    slack_client_id: str = ""
+    slack_client_secret: str = ""
+    slack_signing_secret: str = ""
+    slack_bot_token: str = ""
+
     document_worker_concurrency: int = 4
 
     openai_api_key: str = ""
+    anthropic_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     semantic_search_enabled: bool = False
     embedding_provider: str = "openai"

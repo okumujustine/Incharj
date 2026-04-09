@@ -174,6 +174,18 @@ connector_sync_state = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+slack_installations = Table(
+    "slack_installations",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("org_id", UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
+    Column("team_id", String(64), nullable=False, unique=True),
+    Column("team_name", String(255)),
+    Column("bot_token", Text, nullable=False),
+    Column("installed_by_slack_user", String(64)),
+    Column("installed_at", DateTime(timezone=True), nullable=False),
+)
+
 embedding_cache = Table(
     "embedding_cache",
     metadata,

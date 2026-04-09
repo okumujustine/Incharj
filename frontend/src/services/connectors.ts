@@ -1,8 +1,8 @@
 import apiClient from './api'
-import type { Connector, SyncJob } from '../types'
+import type { Connector, SyncJob, DocumentsResponse } from '../types'
 
 interface CreateConnectorPayload {
-  kind: 'google_drive'
+  kind: 'google_drive' | 'slack'
   name: string
   credentials?: Record<string, string>
 }
@@ -10,13 +10,6 @@ interface CreateConnectorPayload {
 interface UpdateConnectorPayload {
   name?: string
   config?: Record<string, unknown>
-}
-
-interface EmbedConnectorResponse {
-  totalDocuments: number
-  embeddedDocuments: number
-  failedDocuments: number
-  totalChunks: number
 }
 
 export const connectorsService = {
@@ -67,15 +60,6 @@ export const connectorsService = {
     return response.data
   },
 
-  async embed(orgSlug: string, connectorId: string): Promise<EmbedConnectorResponse> {
-    const response = await apiClient.post<EmbedConnectorResponse>(
-      `/connectors/${connectorId}/embed`,
-      null,
-      { params: { org: orgSlug } }
-    )
-    return response.data
-  },
-
   async pause(orgSlug: string, connectorId: string): Promise<Connector> {
     const response = await apiClient.post<Connector>(
       `/connectors/${connectorId}/pause`,
@@ -105,6 +89,36 @@ export const connectorsService = {
 
   async cancelSyncJob(orgSlug: string, jobId: string): Promise<void> {
     await apiClient.post(`/sync/jobs/${jobId}/cancel`, null, { params: { org: orgSlug } })
+  },
+
+  async clearSyncHistory(orgSlug: string, connectorId: string): Promise<void> {
+    await apiClient.delete('/sync/jobs', { params: { org: orgSlug, connector_id: connectorId } })
+  },
+
+  async connect(orgSlug: string, connectorId: string): Promise<Connector> {
+    const response = await apiClient.post<Connector>(
+      `/connectors/${connectorId}/connect`,
+      null,
+      { params: { org: orgSlug } }
+    )
+    return response.data
+  },
+
+  async listDocuments(
+    orgSlug: string,
+    connectorId: string,
+    opts: { status?: string; limit?: number; offset?: number } = {}
+  ): Promise<DocumentsResponse> {
+    const response = await apiClient.get<DocumentsResponse>('/documents', {
+      params: {
+        org: orgSlug,
+        connector_id: connectorId,
+        status: opts.status,
+        limit: opts.limit ?? 50,
+        offset: opts.offset ?? 0,
+      },
+    })
+    return response.data
   },
 
   async listSyncJobs(orgSlug: string, connectorId: string): Promise<SyncJob[]> {

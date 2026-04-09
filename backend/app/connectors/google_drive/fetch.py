@@ -6,9 +6,11 @@ import httpx
 
 from app.connectors.google_drive.auth import read_access_token
 from app.connectors.google_drive.constants import (
+    DOCX_MIME,
     EXPORT_MIME_TYPES,
     GOOGLE_DRIVE_DOWNLOAD_URL,
     GOOGLE_DRIVE_EXPORT_URL,
+    XLSX_MIME,
 )
 from app.connectors.plugin_types import ConnectorFetchInput, ConnectorFetchedDocument
 
@@ -56,8 +58,8 @@ async def fetch_google_document(input: ConnectorFetchInput) -> ConnectorFetchedD
 
     if mime_type == "application/pdf":
         try:
-            import pdfplumber
             import io
+            import pdfplumber
             with pdfplumber.open(io.BytesIO(raw)) as pdf:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages).strip()
             return ConnectorFetchedDocument(
@@ -71,6 +73,53 @@ async def fetch_google_document(input: ConnectorFetchInput) -> ConnectorFetchedD
                 code=SyncErrorCode.PARSE_FAILED,
                 stage="normalize",
                 message="Failed to parse PDF",
+                retriable=False,
+            ) from exc
+
+    if mime_type == DOCX_MIME:
+        try:
+            import io
+            from docx import Document
+            doc = Document(io.BytesIO(raw))
+            text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            return ConnectorFetchedDocument(
+                content=text or None,
+                content_type=mime_type,
+                metadata=input.ref.metadata,
+            )
+        except Exception as exc:
+            from app.types.sync_errors import SyncErrorCode, SyncPipelineError
+            raise SyncPipelineError(
+                code=SyncErrorCode.PARSE_FAILED,
+                stage="normalize",
+                message="Failed to parse DOCX",
+                retriable=False,
+            ) from exc
+
+    if mime_type == XLSX_MIME:
+        try:
+            import io
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+            lines: list[str] = []
+            for sheet in wb.worksheets:
+                lines.append(f"[Sheet: {sheet.title}]")
+                for row in sheet.iter_rows(values_only=True):
+                    cells = [str(c) if c is not None else "" for c in row]
+                    if any(cells):
+                        lines.append("\t".join(cells))
+            text = "\n".join(lines)
+            return ConnectorFetchedDocument(
+                content=text or None,
+                content_type=mime_type,
+                metadata=input.ref.metadata,
+            )
+        except Exception as exc:
+            from app.types.sync_errors import SyncErrorCode, SyncPipelineError
+            raise SyncPipelineError(
+                code=SyncErrorCode.PARSE_FAILED,
+                stage="normalize",
+                message="Failed to parse XLSX",
                 retriable=False,
             ) from exc
 

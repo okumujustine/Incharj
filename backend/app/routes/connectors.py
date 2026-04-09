@@ -171,6 +171,64 @@ async def connectors_update(
     return _map_connector(updated)
 
 
+def _get_server_credentials(kind: str) -> dict | None:
+    """Return env-configured credentials for a connector kind, or None if not set."""
+    from app.core.config import settings
+
+    if kind == "slack":
+        token = settings.slack_bot_token
+        return {"bot_token": token} if token else None
+    # Future connectors: add new elif branches here
+    return None
+
+
+@router.post("/connectors/{connector_id}/connect")
+async def connectors_connect(
+    connector_id: str,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """Activate a connector by loading its credentials from server-side environment variables.
+
+    Used for non-OAuth connectors (e.g. Slack). No credentials are accepted from
+    the client — the token must be configured via the server's environment.
+    """
+    from sqlalchemy import select as sa_select
+    from app.utils.security import encrypt_credentials
+
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        sa_select(*_CONNECTOR_COLS).where(connectors_t.c.id == connector_id)
+    )
+    if row is None:
+        raise NotFoundError("Connector not found")
+
+    from app.db.tables import organizations
+
+    org_row = await pool.fetchrow(
+        sa_select(organizations.c.slug).where(organizations.c.id == row["org_id"])
+    )
+    membership = await get_current_membership(org_row["slug"], str(current_user["id"]))
+    require_role(membership, ["owner", "admin"])
+
+    kind = row["kind"]
+    credentials = _get_server_credentials(kind)
+    if not credentials:
+        raise BadRequestError(
+            f"No server-side credentials configured for '{kind}'. "
+            f"Ask your administrator to set the required environment variable."
+        )
+
+    encrypted = encrypt_credentials(credentials)
+    stmt = (
+        update(connectors_t)
+        .where(connectors_t.c.id == connector_id, connectors_t.c.org_id == membership["org_id"])
+        .values(credentials=encrypted, status="idle", updated_at=func.now())
+        .returning(*_CONNECTOR_COLS)
+    )
+    updated = await pool.fetchrow(stmt)
+    return _map_connector(updated)
+
+
 @router.delete("/connectors/{connector_id}", status_code=204)
 async def connectors_delete(
     connector_id: str,

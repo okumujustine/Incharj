@@ -45,6 +45,13 @@ certs/
 .claude/
 .codex-skill-staging/
 
+# Celery runtime state
+backend/celerybeat-schedule
+celerybeat-schedule
+
+# uv
+backend/.python-version
+
 # macOS
 .DS_Store
 *.pem

@@ -27,7 +27,7 @@ export interface Membership {
 export interface Connector {
   id: string
   org_id: string
-  kind: 'google_drive'
+  kind: 'google_drive' | 'slack'
   name: string
   status: 'idle' | 'syncing' | 'error' | 'paused'
   last_synced_at: string | null
@@ -85,9 +85,19 @@ export interface Document {
   kind: string
   ext: string | null
   author_name: string | null
+  word_count: number | null
   mtime: string | null
   indexed_at: string
-  content_preview: string | null
+  extraction_status: 'succeeded' | 'failed' | 'empty' | string | null
+  extraction_error_code: string | null
+  metadata: Record<string, unknown> | null
+}
+
+export interface DocumentsResponse {
+  results: Document[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export interface Invitation {
