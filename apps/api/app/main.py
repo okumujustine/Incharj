@@ -1,5 +1,8 @@
 import logging
 
+from app.core.secrets import load_infisical
+load_infisical()  # must run before any settings are imported
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, ORJSONResponse

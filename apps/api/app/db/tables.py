@@ -93,7 +93,7 @@ connectors = Table(
     Column("sync_cursor", Text),
     Column("last_synced_at", DateTime(timezone=True)),
     Column("last_error", Text),
-    Column("sync_frequency", String(50), nullable=False, default="1 hour"),
+    Column("sync_frequency", String(50), nullable=False, default="24 hours"),
     Column("doc_count", Integer, nullable=False, default=0),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),

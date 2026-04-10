@@ -51,7 +51,7 @@ async function main() {
   const secretsEnv = await loadSecretsFromProvider();
 
   const child = spawn(bin, args, {
-    env: { ...process.env, ...secretsEnv },
+    env: { ...secretsEnv, ...process.env },
     shell: false,
     stdio: 'inherit',
   });

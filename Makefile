@@ -44,9 +44,6 @@ setup:
 	cd apps/bot && uv sync
 	@echo "Installing web deps (npm)..."
 	cd apps/web && npm install
-	@echo "Installing docs deps (npm)..."
-	cd docs && npm install
-	@echo "Use docs/runtime-configuration.md for the runtime variable checklist."
 
 generate-keys:
 	@echo "APP_SECRET=$$(openssl rand -hex 32)"

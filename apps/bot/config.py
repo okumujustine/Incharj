@@ -30,8 +30,8 @@ class BotSettings:
     incharj_api_url: str
     incharj_org_id: str
     transport: TransportKind
-    port: int
-    slack_events_path: str
+    port: int = 3001
+    slack_events_path: str = "/slack/events"
 
     @classmethod
     def from_env(cls) -> "BotSettings":
@@ -52,6 +52,6 @@ class BotSettings:
             incharj_api_url=_required_env("INCHARJ_API_URL").rstrip("/"),
             incharj_org_id=_required_env("INCHARJ_ORG_ID"),
             transport=transport,
-            port=int(_required_env("PORT")),
-            slack_events_path=_required_env("SLACK_EVENTS_PATH"),
+            port=int(os.getenv("PORT", "3001")),
+            slack_events_path=os.getenv("SLACK_EVENTS_PATH", "/slack/events"),
         )

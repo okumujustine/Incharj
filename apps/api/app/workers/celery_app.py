@@ -1,6 +1,10 @@
-from celery import Celery
+from app.core.secrets import load_infisical
 
-from app.core.config import settings
+load_infisical()
+
+from celery import Celery  # noqa: E402
+
+from app.core.config import settings  # noqa: E402
 
 
 celery_app = Celery(

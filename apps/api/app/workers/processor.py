@@ -97,6 +97,9 @@ async def process_enumerate_job(sync_job_id: str, connector_id: str) -> None:
         await pool.execute(sql_jobs.fail_sync_job_connector_not_found(sync_job_id))
         return
 
+    from app.utils.slack_notify import notify_sync
+    await notify_sync(connector_model["kind"], "started")
+
     try:
         provider = get_connector_provider(connector_model["kind"])
         plugin = provider.plugin
@@ -210,6 +213,8 @@ async def process_enumerate_job(sync_job_id: str, connector_id: str) -> None:
         await pool.execute(
             sql_jobs.fail_sync_job(sync_job_id, f"{sync_error.code}: {sync_error}")
         )
+        from app.utils.slack_notify import notify_sync
+        await notify_sync(connector_model["kind"], "failed", error_message=str(sync_error))
         raise
 
 
@@ -454,6 +459,15 @@ async def process_finalize_job(
 
     count_row = await pool.fetchrow(sql_jobs.count_connector_docs(connector_id))
     total_docs = int(count_row["count"]) if count_row else 0
+
+    from app.utils.slack_notify import notify_sync
+    await notify_sync(
+        connector_model["kind"],
+        "done",
+        docs_indexed=progress["docs_indexed"] if progress else None,
+        docs_skipped=progress["docs_skipped"] if progress else None,
+        docs_errored=progress["docs_errored"] if progress else None,
+    )
 
     await pool.execute(
         sql_c.update_connector_after_sync(

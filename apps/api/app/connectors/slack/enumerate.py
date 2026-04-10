@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -207,22 +208,27 @@ async def enumerate_slack(input: ConnectorEnumerateInput) -> ConnectorEnumeratio
                 if not history_cursor or len(refs) >= max_messages:
                     break
 
+                await asyncio.sleep(1.0)  # avoid Slack rate limits between pages
+
             if reached_page_limit or len(refs) >= max_messages:
                 break
+
+            await asyncio.sleep(0.5)  # avoid Slack rate limits between channels
 
     # Build next checkpoint
     next_checkpoint: ConnectorCheckpoint | None = None
     if reached_page_limit and history_cursor:
-        # Still more pages in the current channel
+        # Still more pages in the current channel — resume from same oldest
         next_checkpoint = ConnectorCheckpoint(
-            cursor=oldest,  # keep the same oldest so we don't miss messages
+            cursor=oldest,
             extra={"channel_cursor": channel_id},
         )
-    elif max_seen_ts:
-        # Advance the oldest timestamp for the next incremental sync
+    elif max_seen_ts and max_seen_ts != oldest:
+        # Cursor advanced — there were new messages; save the new watermark
         next_checkpoint = ConnectorCheckpoint(
             cursor=max_seen_ts,
             extra={},
         )
+    # else: no new messages — next_checkpoint stays None, enumeration is complete
 
     return ConnectorEnumerationResult(refs=refs, next_checkpoint=next_checkpoint)
