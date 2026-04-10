@@ -29,6 +29,7 @@ class BotSettings:
     slack_signing_secret: str | None
     incharj_api_url: str
     incharj_org_id: str
+    openai_api_key: str
     transport: TransportKind
     port: int = 3001
     slack_events_path: str = "/slack/events"
@@ -51,6 +52,7 @@ class BotSettings:
             slack_signing_secret=slack_signing_secret,
             incharj_api_url=_required_env("INCHARJ_API_URL").rstrip("/"),
             incharj_org_id=_required_env("INCHARJ_ORG_ID"),
+            openai_api_key=_required_env("OPENAI_API_KEY"),
             transport=transport,
             port=int(os.getenv("PORT", "3001")),
             slack_events_path=os.getenv("SLACK_EVENTS_PATH", "/slack/events"),

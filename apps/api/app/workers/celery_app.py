@@ -26,8 +26,8 @@ celery_app.conf.task_routes = {
 }
 
 celery_app.conf.beat_schedule = {
-    "dispatch-due-syncs-every-30s": {
+    "dispatch-due-syncs-every-5m": {
         "task": "app.workers.tasks.sync.dispatch",
-        "schedule": 30.0,
+        "schedule": 300.0,
     }
 }

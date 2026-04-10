@@ -9,3 +9,6 @@ THINKING_MESSAGES = [
 ]
 
 CLEAR_COMMANDS = {"clear", "/clear", "clear chat", "delete messages"}
+
+# Session auto-close timeout in seconds (30 minutes)
+SESSION_TIMEOUT_SECONDS = 30 * 60

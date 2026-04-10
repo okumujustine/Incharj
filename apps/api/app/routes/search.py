@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import AsyncIterator, Optional
 
-import anthropic
+from openai import AsyncOpenAI
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -37,8 +37,8 @@ def _build_context(results: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-async def _stream_claude(query: str, context: str) -> AsyncIterator[str]:
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+async def _stream_openai(query: str, context: str) -> AsyncIterator[str]:
+    client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
     system = (
         "You are Incharj, an AI assistant that helps teams find information "
         "from their connected documents and Slack conversations. "
@@ -47,14 +47,19 @@ async def _stream_claude(query: str, context: str) -> AsyncIterator[str]:
     )
     user_message = f"Context from search results:\n\n{context}\n\nQuestion: {query}"
 
-    async with client.messages.stream(
-        model="claude-sonnet-4-6",
+    stream = await client.chat.completions.create(
+        model="gpt-4o-mini",
         max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-    ) as stream:
-        async for text in stream.text_stream:
-            yield f"data: {json.dumps({'delta': text})}\n\n"
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
+        stream=True,
+    )
+    async for chunk in stream:
+        delta = chunk.choices[0].delta.content or ""
+        if delta:
+            yield f"data: {json.dumps({'delta': delta})}\n\n"
 
     yield "data: [DONE]\n\n"
 
@@ -73,7 +78,7 @@ async def ai_search_stream(body: AiSearchRequest) -> StreamingResponse:
     context = _build_context(result.get("results", []))
 
     return StreamingResponse(
-        _stream_claude(body.query, context),
+        _stream_openai(body.query, context),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -19,27 +19,6 @@ def _build_source_button(index: int, source: dict[str, Any]) -> dict[str, Any]:
     return button
 
 
-def _build_followup_actions(query: str) -> dict[str, Any]:
-    return {
-        "type": "actions",
-        "elements": [
-            {
-                "type": "button",
-                "text": {"type": "plain_text", "text": "Tell me more", "emoji": False},
-                "action_id": "followup_more",
-                "style": "primary",
-                "value": query,
-            },
-            {
-                "type": "button",
-                "text": {"type": "plain_text", "text": "Show the breakdown", "emoji": False},
-                "action_id": "followup_breakdown",
-                "value": query,
-            },
-        ],
-    }
-
-
 def build_answer_blocks(query: str, answer: str, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = [{
         "type": "section",
@@ -56,6 +35,4 @@ def build_answer_blocks(query: str, answer: str, sources: list[dict[str, Any]]) 
             })
             blocks.append({"type": "actions", "elements": source_buttons})
 
-    blocks.append({"type": "divider"})
-    blocks.append(_build_followup_actions(query))
     return blocks

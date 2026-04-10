@@ -48,7 +48,7 @@ def load_infisical() -> None:
         )
         injected = 0
         for secret in result.secrets:
-            if secret.secretKey not in os.environ:
+            if secret.secretKey not in os.environ and secret.secretValue:
                 os.environ[secret.secretKey] = secret.secretValue
                 injected += 1
 
