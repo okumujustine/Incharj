@@ -16,6 +16,7 @@ import {
 } from './pages/SettingsPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { SlackCallbackPage } from './pages/SlackCallbackPage'
+import { OrgSelectorPage } from './pages/OrgSelectorPage'
 import { ToastViewport } from './components/ui/ToastViewport'
 
 export default function App() {
@@ -41,6 +42,16 @@ export default function App() {
           element={
             <AuthGuard>
               <OAuthCallbackPage />
+            </AuthGuard>
+          }
+        />
+
+        {/* Org switcher — full screen, no sidebar */}
+        <Route
+          path="/orgs"
+          element={
+            <AuthGuard>
+              <OrgSelectorPage />
             </AuthGuard>
           }
         />

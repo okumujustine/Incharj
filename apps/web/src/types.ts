@@ -16,11 +16,22 @@ export interface Organization {
   created_at: string
 }
 
+// Returned by GET /users/me/orgs — org + the current user's role in it
+export interface OrgSummary {
+  id: string
+  name: string
+  slug: string
+  plan: string | null
+  role: OrgRole
+}
+
+export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
+
 export interface Membership {
   id: string
   user_id: string
   org_id: string
-  role: 'owner' | 'admin' | 'member' | 'viewer'
+  role: OrgRole
   user?: User
 }
 
@@ -104,7 +115,7 @@ export interface Invitation {
   id: string
   org_id: string
   email: string
-  role: 'admin' | 'member' | 'viewer'
+  role: OrgRole
   token: string
   accepted: boolean
   expires_at: string
