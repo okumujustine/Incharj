@@ -54,9 +54,4 @@ async def on_startup() -> None:
         logging.getLogger("startup").warning("Schema init skipped: %s", exc)
 
 
-@app.get("/health")
-async def health() -> dict[str, bool]:
-    return {"ok": True}
-
-
 app.include_router(api_router, prefix=settings.api_prefix)
