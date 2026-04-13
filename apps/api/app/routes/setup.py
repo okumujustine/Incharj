@@ -9,6 +9,7 @@ from app.db.engine import get_engine
 from app.db.pool import get_pool
 from app.db.tables import organizations
 from app.errors import ConflictError
+from app.schemas.auth import SetupSchema
 from app.services.auth_service import register_user
 
 router = APIRouter()
@@ -28,15 +29,9 @@ async def setup_status() -> dict:
 
 
 @router.post("/setup", status_code=201)
-async def setup(request: Request) -> JSONResponse:
+async def setup(body: SetupSchema, request: Request) -> JSONResponse:
     if await _is_initialized():
         raise ConflictError("This instance is already set up")
-
-    body = await request.json()
-
-    missing = [f for f in ("org_name", "full_name", "email", "password") if not body.get(f)]
-    if missing:
-        return JSONResponse({"detail": f"Missing required fields: {', '.join(missing)}"}, status_code=422)
 
     meta = {
         "user_agent": request.headers.get("user-agent"),
@@ -45,7 +40,7 @@ async def setup(request: Request) -> JSONResponse:
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        result = await register_user(conn, body, meta)
+        result = await register_user(conn, body.model_dump(), meta)
 
     response = JSONResponse(content=result["token_response"], status_code=201)
     response.set_cookie(
