@@ -1,5 +1,5 @@
 import apiClient from './api'
-import type { Organization, Membership, Invitation } from '../types'
+import type { Organization, OrgRole, InviteRole, OrgSummary, Membership, Invitation } from '../types'
 
 interface CreateOrgPayload {
   name: string
@@ -13,12 +13,18 @@ interface UpdateOrgPayload {
 
 interface InviteMemberPayload {
   email: string
-  role: 'admin' | 'member' | 'viewer'
+  role: InviteRole
 }
 
 export const orgsService = {
   async list(): Promise<Organization[]> {
     const response = await apiClient.get<Organization[]>('/orgs')
+    return response.data
+  },
+
+  // Returns all orgs the logged-in user belongs to, with their role in each.
+  async listMine(): Promise<OrgSummary[]> {
+    const response = await apiClient.get<OrgSummary[]>('/users/me/orgs')
     return response.data
   },
 
@@ -49,7 +55,7 @@ export const orgsService = {
   async updateMemberRole(
     slug: string,
     userId: string,
-    role: 'admin' | 'member' | 'viewer'
+    role: OrgRole
   ): Promise<Membership> {
     const response = await apiClient.patch<Membership>(
       `/orgs/${slug}/members/${userId}`,

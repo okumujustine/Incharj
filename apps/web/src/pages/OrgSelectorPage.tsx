@@ -1,13 +1,12 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Building2, Plus, ArrowRight, Zap } from 'lucide-react'
+import { Building2, ArrowRight, Zap } from 'lucide-react'
 import { orgsService } from '../services/orgs'
 import { useAuthStore } from '../stores/authStore'
-import { Button } from '../components/ui/Button'
 import { PageSpinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
-import type { Organization } from '../types'
+import type { OrgSummary } from '../types'
 
 export function OrgSelectorPage() {
   const navigate = useNavigate()
@@ -15,15 +14,20 @@ export function OrgSelectorPage() {
   const user = useAuthStore((s) => s.user)
 
   const orgsQuery = useQuery({
-    queryKey: ['orgs'],
-    queryFn: orgsService.list,
+    queryKey: ['user-orgs'],
+    queryFn: orgsService.listMine,
   })
 
   if (orgsQuery.isLoading) return <PageSpinner />
+  if (orgsQuery.isError) return (
+    <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+      <p className="text-sm text-error">Failed to load organizations. Please refresh and try again.</p>
+    </div>
+  )
 
-  function handleSelectOrg(org: Organization) {
+  function handleSelectOrg(org: OrgSummary) {
     setCurrentOrg(org)
-    navigate(`/${org.slug}/search`)
+    navigate('/search')
   }
 
   const orgs = orgsQuery.data ?? []
@@ -54,18 +58,8 @@ export function OrgSelectorPage() {
           <div className="bg-bg-surface border border-border rounded">
             <EmptyState
               icon={<Building2 size={36} />}
-              title="No organizations yet"
-              description="Create your first organization to start indexing your knowledge base."
-              action={
-                <Button
-                  variant="primary"
-                  size="md"
-                  onClick={() => navigate('/orgs/new')}
-                  leftIcon={<Plus size={14} />}
-                >
-                  Create organization
-                </Button>
-              }
+              title="No organizations"
+              description="You are not a member of any organization. Ask your admin to invite you."
             />
           </div>
         ) : (
@@ -86,22 +80,19 @@ export function OrgSelectorPage() {
                   </div>
                   <div className="flex items-center gap-2 text-text-muted group-hover:text-text-secondary transition-colors">
                     <span className="text-xs capitalize bg-bg-overlay border border-border rounded px-2 py-0.5">
-                      {org.plan}
+                      {org.role}
                     </span>
+                    {org.plan && (
+                      <span className="text-xs capitalize bg-bg-overlay border border-border rounded px-2 py-0.5">
+                        {org.plan}
+                      </span>
+                    )}
                     <ArrowRight size={14} />
                   </div>
                 </button>
               ))}
             </div>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/orgs/new')}
-              leftIcon={<Plus size={13} />}
-            >
-              New organization
-            </Button>
           </>
         )}
       </div>

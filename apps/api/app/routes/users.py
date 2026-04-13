@@ -7,6 +7,9 @@ from sqlalchemy import func, update
 from app.db.pool import get_pool
 from app.db.tables import users as users_t
 from app.middleware.auth import get_current_user
+from app.schemas.org import OrgSummarySchema
+from app.sql import orgs as sql_orgs
+from app.utils.serialization import serialize_org_for_user
 
 router = APIRouter()
 
@@ -28,6 +31,13 @@ def _map_user(row: dict) -> dict:
 @router.get("/users/me")
 async def users_me(current_user: dict = Depends(get_current_user)) -> dict:
     return _map_user(current_user)
+
+
+@router.get("/users/me/orgs", response_model=list[OrgSummarySchema])
+async def users_me_orgs(current_user: dict = Depends(get_current_user)) -> list:
+    pool = await get_pool()
+    rows = await pool.fetch(sql_orgs.select_orgs_for_user(str(current_user["id"])))
+    return [serialize_org_for_user(row) for row in rows]
 
 
 @router.patch("/users/me")

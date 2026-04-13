@@ -8,9 +8,10 @@ import {
   ChevronDown,
   LogOut,
   User,
+  ChevronsUpDown,
 } from 'lucide-react'
-import { IncharjLogo } from '../ui/IncharjLogo'
 import { useAuth } from '../../hooks/useAuth'
+import { Modal } from '../ui/Modal'
 
 const navLinks = [
   { to: '/search', icon: Search, label: 'Search' },
@@ -20,9 +21,10 @@ const navLinks = [
 ]
 
 export function Sidebar() {
-  const { user, logout } = useAuth()
+  const { user, logout, currentOrg } = useAuth()
   const navigate = useNavigate()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [switchOrgOpen, setSwitchOrgOpen] = useState(false)
 
   const userInitials = user?.full_name
     ? user.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -30,10 +32,19 @@ export function Sidebar() {
 
   return (
     <aside className="w-[220px] lg:w-[240px] xl:w-[260px] flex-shrink-0 flex flex-col bg-bg-surface border-r border-border h-screen sticky top-0">
-      {/* Logo */}
-      <div className="px-3 h-12 xl:h-14 flex items-center border-b border-border">
-        <IncharjLogo size={22} />
-      </div>
+      {/* Org switcher — replaces logo slot */}
+      <button
+        onClick={() => setSwitchOrgOpen(true)}
+        className="w-full flex items-center gap-2.5 px-3 h-12 xl:h-14 border-b border-border hover:bg-bg-elevated transition-colors group"
+      >
+        <div className="w-6 h-6 rounded bg-accent/15 border border-accent/20 flex items-center justify-center text-accent text-xs font-semibold flex-shrink-0">
+          {currentOrg ? currentOrg.name.slice(0, 2).toUpperCase() : '—'}
+        </div>
+        <span className="flex-1 text-sm font-semibold text-text-primary truncate text-left">
+          {currentOrg?.name ?? 'No org selected'}
+        </span>
+        <ChevronsUpDown size={12} className="text-text-muted flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </button>
 
       {/* Nav Links */}
       <nav className="flex-1 py-3 overflow-y-auto scrollbar-thin">
@@ -106,6 +117,19 @@ export function Sidebar() {
           </>
         )}
       </div>
+      {switchOrgOpen && (
+        <Modal
+          title="Switch organization?"
+          description={
+            currentOrg?.name
+              ? `You are currently in "${currentOrg.name}". Do you want to switch to a different organization?`
+              : 'No organization is currently selected. Do you want to switch to a different organization?'
+          }
+          confirmLabel="Switch"
+          onConfirm={() => { setSwitchOrgOpen(false); navigate('/orgs') }}
+          onCancel={() => setSwitchOrgOpen(false)}
+        />
+      )}
     </aside>
   )
 }

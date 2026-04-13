@@ -23,8 +23,7 @@ def select_orgs_for_user(user_id):
             organizations.c.slug,
             organizations.c.name,
             organizations.c.plan,
-            organizations.c.settings,
-            organizations.c.created_at,
+            memberships.c.role,
         )
         .join(memberships, memberships.c.org_id == organizations.c.id)
         .where(memberships.c.user_id == user_id)

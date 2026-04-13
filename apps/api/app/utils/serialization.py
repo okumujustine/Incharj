@@ -1,6 +1,19 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
+
+
+def uuid_to_str(value: UUID) -> str:
+    """Convert a PostgreSQL UUID object to a plain string for JSON serialization.
+
+    asyncpg returns UUID columns as Python UUID objects (not strings).
+    JSON serializers cannot handle UUID objects natively, so this conversion
+    must happen at the API boundary before data leaves the backend.
+    """
+    if not isinstance(value, UUID):
+        raise TypeError(f"Expected a UUID object, got {type(value).__name__}: {value!r}")
+    return str(value)
 
 
 def map_user(row: dict[str, Any]) -> dict[str, Any]:
@@ -23,6 +36,25 @@ def map_org(row: dict[str, Any]) -> dict[str, Any]:
         "plan": row.get("plan"),
         "settings": row.get("settings"),
         "created_at": row.get("created_at"),
+    }
+
+
+def serialize_org_for_user(row: dict[str, Any]) -> dict[str, Any]:
+    """Build the org summary returned to the logged-in user.
+
+    Used by GET /users/me/orgs, which joins organizations with memberships
+    so each row includes the user's role in that org.
+
+    The 'role' field is what differentiates this from map_org — it tells
+    the client whether the user is an owner, admin, or member of each org,
+    which drives what they can see and do after switching into that org.
+    """
+    return {
+        "id": uuid_to_str(row["id"]),
+        "slug": row["slug"],
+        "name": row["name"],
+        "plan": row.get("plan"),
+        "role": row["role"],
     }
 
 

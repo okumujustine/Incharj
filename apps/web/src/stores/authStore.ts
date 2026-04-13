@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { User, Organization } from '../types'
+import type { User, OrgSummary } from '../types'
 
 interface AuthState {
   user: User | null
   accessToken: string | null
-  currentOrg: Organization | null
+  currentOrg: OrgSummary | null
   setAuth: (user: User, token: string) => void
-  setCurrentOrg: (org: Organization) => void
+  setCurrentOrg: (org: OrgSummary) => void
   updateToken: (token: string) => void
   logout: () => void
 }
@@ -20,7 +20,7 @@ export const useAuthStore = create<AuthState>()(
       currentOrg: null,
 
       setAuth: (user, token) =>
-        set({ user, accessToken: token, currentOrg: user.org ?? null }),
+        set({ user, accessToken: token, currentOrg: null }),
 
       setCurrentOrg: (org) =>
         set({ currentOrg: org }),

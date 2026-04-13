@@ -11,16 +11,30 @@ export interface Organization {
   id: string
   name: string
   slug: string
-  plan: string
+  plan: string | null
   logo_url: string | null
   created_at: string
 }
+
+// Returned by GET /users/me/orgs — org + the current user's role in it
+export interface OrgSummary {
+  id: string
+  name: string
+  slug: string
+  plan: string | null
+  role: OrgRole
+}
+
+export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
+
+// Roles that can be assigned via invitation — 'owner' is excluded intentionally
+export type InviteRole = Exclude<OrgRole, 'owner'>
 
 export interface Membership {
   id: string
   user_id: string
   org_id: string
-  role: 'owner' | 'admin' | 'member' | 'viewer'
+  role: OrgRole
   user?: User
 }
 
@@ -104,7 +118,7 @@ export interface Invitation {
   id: string
   org_id: string
   email: string
-  role: 'admin' | 'member' | 'viewer'
+  role: OrgRole
   token: string
   accepted: boolean
   expires_at: string
