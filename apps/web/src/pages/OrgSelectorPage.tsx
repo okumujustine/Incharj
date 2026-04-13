@@ -21,8 +21,14 @@ export function OrgSelectorPage() {
   if (orgsQuery.isLoading) return <PageSpinner />
 
   function handleSelectOrg(org: OrgSummary) {
-    // OrgSummary doesn't have logo_url/created_at — cast to what the store expects
-    setCurrentOrg({ ...org, logo_url: null, created_at: '' })
+    const currentOrg: Parameters<typeof setCurrentOrg>[0] = {
+      ...org,
+      plan: org.plan ?? 'free',
+      logo_url: null,
+      created_at: new Date().toISOString(),
+    }
+
+    setCurrentOrg(currentOrg)
     navigate('/search')
   }
 
