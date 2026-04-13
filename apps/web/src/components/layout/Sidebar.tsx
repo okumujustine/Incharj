@@ -120,7 +120,11 @@ export function Sidebar() {
       {switchOrgOpen && (
         <Modal
           title="Switch organization?"
-          description={`You are currently in "${currentOrg?.name}". Do you want to switch to a different organization?`}
+          description={
+            currentOrg?.name
+              ? `You are currently in "${currentOrg.name}". Do you want to switch to a different organization?`
+              : 'No organization is currently selected. Do you want to switch to a different organization?'
+          }
           confirmLabel="Switch"
           onConfirm={() => { setSwitchOrgOpen(false); navigate('/orgs') }}
           onCancel={() => setSwitchOrgOpen(false)}

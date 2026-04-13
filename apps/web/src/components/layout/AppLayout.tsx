@@ -1,4 +1,3 @@
-import React from 'react'
 import { Outlet, Navigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { useAuthStore } from '../../stores/authStore'
@@ -7,7 +6,7 @@ export function AppLayout() {
   const currentOrg = useAuthStore((s) => s.currentOrg)
 
   if (!currentOrg) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/orgs" replace />
   }
 
   return (

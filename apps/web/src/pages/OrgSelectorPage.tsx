@@ -19,16 +19,14 @@ export function OrgSelectorPage() {
   })
 
   if (orgsQuery.isLoading) return <PageSpinner />
+  if (orgsQuery.isError) return (
+    <div className="min-h-screen bg-bg-primary flex items-center justify-center">
+      <p className="text-sm text-error">Failed to load organizations. Please refresh and try again.</p>
+    </div>
+  )
 
   function handleSelectOrg(org: OrgSummary) {
-    const currentOrg: Parameters<typeof setCurrentOrg>[0] = {
-      ...org,
-      plan: org.plan ?? 'free',
-      logo_url: null,
-      created_at: new Date().toISOString(),
-    }
-
-    setCurrentOrg(currentOrg)
+    setCurrentOrg(org)
     navigate('/search')
   }
 

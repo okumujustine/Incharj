@@ -11,7 +11,7 @@ export interface Organization {
   id: string
   name: string
   slug: string
-  plan: string
+  plan: string | null
   logo_url: string | null
   created_at: string
 }
