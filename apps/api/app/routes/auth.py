@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.db.pool import get_pool
 from app.middleware.auth import get_current_user
+from app.schemas.auth import LoginSchema
 from app.services.auth_service import login_user, logout_session, refresh_session
 from app.sql import orgs as sql_orgs
 
@@ -29,15 +30,14 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 @router.post("/auth/login")
-async def auth_login(request: Request) -> JSONResponse:
-    body = await request.json()
+async def auth_login(body: LoginSchema, request: Request) -> JSONResponse:
     meta = {
         "user_agent": request.headers.get("user-agent"),
         "ip_address": request.client.host if request.client else None,
     }
     pool = await get_pool()
     async with pool.acquire() as conn:
-        result = await login_user(conn, body, meta)
+        result = await login_user(conn, body.model_dump(), meta)
 
     response = JSONResponse(content=result["token_response"])
     _set_refresh_cookie(response, result["refresh_token"])
