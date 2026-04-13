@@ -1,5 +1,5 @@
 import apiClient from './api'
-import type { Organization, OrgRole, OrgSummary, Membership, Invitation } from '../types'
+import type { Organization, OrgRole, InviteRole, OrgSummary, Membership, Invitation } from '../types'
 
 interface CreateOrgPayload {
   name: string
@@ -13,7 +13,7 @@ interface UpdateOrgPayload {
 
 interface InviteMemberPayload {
   email: string
-  role: OrgRole
+  role: InviteRole
 }
 
 export const orgsService = {

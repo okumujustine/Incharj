@@ -27,6 +27,9 @@ export interface OrgSummary {
 
 export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
+// Roles that can be assigned via invitation — 'owner' is excluded intentionally
+export type InviteRole = Exclude<OrgRole, 'owner'>
+
 export interface Membership {
   id: string
   user_id: string
