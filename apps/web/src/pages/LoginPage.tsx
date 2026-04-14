@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
-import { IncharjLogo } from '../components/ui/IncharjLogo'
 import { useAuth } from '../hooks/useAuth'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { IncharjLogo } from '../components/ui/IncharjLogo'
 import { useToastStore } from '../stores/toastStore'
 
 export function LoginPage() {
@@ -19,7 +19,6 @@ export function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setIsLoading(true)
-
     try {
       await login({ email, password })
       navigate('/orgs', { replace: true })
@@ -27,30 +26,62 @@ export function LoginPage() {
       const message =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         'Invalid email or password'
-      showToast({
-        variant: 'error',
-        title: 'Sign in failed',
-        description: message,
-      })
+      showToast({ variant: 'error', title: 'Sign in failed', description: message })
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="mb-8">
-          <IncharjLogo size={32} />
-        </div>
+    <div className="min-h-screen flex">
+      {/* Left brand panel */}
+      <div className="hidden lg:flex w-[420px] xl:w-[480px] flex-shrink-0 flex-col bg-text-primary relative overflow-hidden">
+        {/* Geometric grid */}
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: 'linear-gradient(rgb(255 255 255) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255) 1px, transparent 1px)',
+            backgroundSize: '40px 40px',
+          }}
+        />
+        {/* Accent circle */}
+        <div className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-accent opacity-20 blur-3xl" />
+        <div className="absolute top-1/3 -right-20 w-64 h-64 rounded-full bg-accent opacity-10 blur-2xl" />
 
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold text-text-primary mb-1">Welcome back</h1>
-          <p className="text-sm text-text-muted">Sign in to your account to continue</p>
-        </div>
+        <div className="relative flex flex-col h-full p-10">
+          {/* Logo */}
+          <IncharjLogo size={28} className="[&_span]:text-white [&_span]:opacity-90" />
 
-        <div className="bg-bg-surface border border-border rounded p-6">
+          {/* Middle copy */}
+          <div className="flex-1 flex flex-col justify-center">
+            <p className="text-3xl font-semibold text-white leading-snug mb-4">
+              Your knowledge base,<br />always within reach.
+            </p>
+            <p className="text-sm text-white/50 leading-relaxed max-w-xs">
+              Search across documents, connectors, and teammates — all from one place.
+            </p>
+          </div>
+
+          {/* Footer */}
+          <p className="text-xs text-white/25 font-mono">incharj.io</p>
+        </div>
+      </div>
+
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center bg-bg-primary p-6">
+        <div className="w-full max-w-sm animate-fade-up">
+          {/* Mobile logo */}
+          <div className="mb-10 lg:hidden">
+            <IncharjLogo size={24} />
+          </div>
+
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-text-primary tracking-tight mb-1">
+              Welcome back
+            </h1>
+            <p className="text-sm text-text-muted">Sign in to continue to your workspace</p>
+          </div>
+
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
               label="Email"
@@ -85,19 +116,19 @@ export function LoginPage() {
               variant="primary"
               size="md"
               isLoading={isLoading}
-              className="w-full mt-1"
+              className="w-full mt-2"
             >
               Sign in
             </Button>
           </form>
-        </div>
 
-        <p className="text-center text-sm text-text-muted mt-5">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-accent hover:text-accent-hover transition-colors">
-            Create one
-          </Link>
-        </p>
+          <p className="text-center text-sm text-text-muted mt-6">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-accent hover:text-accent-hover font-medium transition-colors">
+              Create one
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   )
