@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Search,
@@ -36,7 +36,7 @@ export function Sidebar() {
       {/* Org switcher */}
       <button
         onClick={() => setSwitchOrgOpen(true)}
-        className="group w-full flex items-center gap-2.5 px-3.5 h-12 xl:h-13 border-b border-border hover:bg-bg-elevated transition-colors"
+        className="group w-full flex items-center gap-2.5 px-3.5 h-12 xl:h-14 border-b border-border hover:bg-bg-elevated transition-colors"
       >
         <div className="w-6 h-6 rounded bg-accent/15 border border-accent/20 flex items-center justify-center text-accent text-xs font-bold flex-shrink-0">
           {currentOrg ? currentOrg.name.slice(0, 2).toUpperCase() : '—'}
@@ -63,7 +63,7 @@ export function Sidebar() {
                 ].join(' ')
               }
             >
-              <Icon size={14} strokeWidth={isActive => isActive ? 2 : 1.5} />
+              <Icon size={14} />
               {label}
             </NavLink>
           ))}
