@@ -7,9 +7,9 @@ import { useAuthStore } from '../stores/authStore'
 import { IncharjLogo } from '../components/ui/IncharjLogo'
 import { PageSpinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
-import type { OrgSummary } from '../types'
+import type { OrgSummary, OrgRole } from '../types'
 
-const ROLE_STYLES: Record<string, string> = {
+const ROLE_STYLES: Record<OrgRole, string> = {
   owner:  'bg-accent/10 text-accent border-accent/20',
   admin:  'bg-warning/10 text-warning border-warning/20',
   member: 'bg-bg-overlay text-text-secondary border-border',
@@ -90,7 +90,12 @@ export function OrgSelectorPage() {
 
                 {/* Badges + arrow */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`text-xs capitalize border rounded px-2 py-0.5 font-medium ${ROLE_STYLES[org.role] ?? ROLE_STYLES.member}`}>
+                  {org.plan && (
+                    <span className="text-xs capitalize border rounded px-2 py-0.5 font-medium bg-bg-overlay text-text-secondary border-border">
+                      {org.plan}
+                    </span>
+                  )}
+                  <span className={`text-xs capitalize border rounded px-2 py-0.5 font-medium ${ROLE_STYLES[org.role]}`}>
                     {org.role}
                   </span>
                   <ArrowRight size={13} className="text-text-muted group-hover:text-accent group-hover:translate-x-0.5 transition-all" />
