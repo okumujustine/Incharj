@@ -20,19 +20,11 @@ import { TopBar } from '../components/layout/TopBar'
 import { IncharjLogo } from '../components/ui/IncharjLogo'
 import { ConnectorIcon } from '../components/ui/ConnectorIcon'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface Turn {
   id: number
   question: string
   answer: AIAnswerState
 }
-
-// ---------------------------------------------------------------------------
-// Suggestion chips — each with an icon for visual anchoring
-// ---------------------------------------------------------------------------
 
 const SUGGESTIONS = [
   { icon: FileText,      text: 'What is our refund policy?' },
@@ -41,27 +33,19 @@ const SUGGESTIONS = [
   { icon: BookOpen,      text: 'What are our engineering principles?' },
 ]
 
-// ---------------------------------------------------------------------------
-// Streaming cursor — a refined ink blink
-// ---------------------------------------------------------------------------
-
 function StreamingCursor() {
   return (
     <span
-      className="inline-block w-px h-[1.1em] bg-text-secondary ml-0.5 align-text-bottom animate-pulse"
+      className="inline-block w-[2px] h-[0.9em] bg-accent/70 ml-0.5 align-text-bottom animate-pulse rounded-full"
       aria-hidden="true"
     />
   )
 }
 
-// ---------------------------------------------------------------------------
-// Answer text — bold + citation markers
-// ---------------------------------------------------------------------------
-
 function AnswerText({ text, streaming }: { text: string; streaming: boolean }) {
   const parts = text.split(/(\*\*[^*]+\*\*|\[[0-9]+\])/g)
   return (
-    <p className="text-sm text-text-primary leading-[1.75] tracking-[0.01em]">
+    <p className="text-sm text-text-primary leading-[1.8] tracking-[0.01em]">
       {parts.map((part, i) => {
         if (/^\*\*[^*]+\*\*$/.test(part))
           return <strong key={i} className="font-semibold text-text-primary">{part.slice(2, -2)}</strong>
@@ -78,15 +62,11 @@ function AnswerText({ text, streaming }: { text: string; streaming: boolean }) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Source pill — compact, document-like
-// ---------------------------------------------------------------------------
-
 function SourcePill({ source }: { source: AnswerSource }) {
   const label = source.title.replace(/[*#_`]/g, '').split('\n')[0].slice(0, 44)
   const inner = (
     <span className="flex items-center gap-1.5">
-      <span className="flex-shrink-0 w-[18px] h-[18px] rounded-full bg-text-primary/8 text-text-secondary text-[8px] font-bold flex items-center justify-center font-mono">
+      <span className="flex-shrink-0 w-[18px] h-[18px] rounded-full bg-accent/10 text-accent text-[8px] font-bold flex items-center justify-center font-mono">
         {source.ref}
       </span>
       <ConnectorIcon kind={source.connector} size={10} />
@@ -99,16 +79,12 @@ function SourcePill({ source }: { source: AnswerSource }) {
     </span>
   )
 
-  const cls = "group inline-flex items-center h-[26px] px-2.5 rounded-md border border-border bg-bg-surface hover:border-border-strong hover:shadow-sm transition-all text-xs"
+  const cls = "group inline-flex items-center h-[26px] px-2.5 rounded border border-border bg-bg-elevated hover:border-accent/30 hover:bg-accent/5 transition-all text-xs cursor-pointer"
 
   return source.url
     ? <a href={source.url} target="_blank" rel="noopener noreferrer" className={cls}>{inner}</a>
     : <span className={cls} title={source.snippet}>{inner}</span>
 }
-
-// ---------------------------------------------------------------------------
-// Sources section
-// ---------------------------------------------------------------------------
 
 function Sources({ sources }: { sources: AnswerSource[] }) {
   const [expanded, setExpanded] = useState(false)
@@ -116,12 +92,12 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
   const visible = expanded ? sources : sources.slice(0, 4)
 
   return (
-    <div className="mt-4 pt-3 border-t border-border/40">
+    <div className="mt-5 pt-4 border-t border-border/30">
       <button
         onClick={() => setExpanded(v => !v)}
-        className="flex items-center gap-1 text-2xs font-medium text-text-muted hover:text-text-secondary mb-2.5 transition-colors tracking-wide uppercase"
+        className="flex items-center gap-1.5 text-2xs font-semibold text-text-muted hover:text-text-secondary mb-3 transition-colors tracking-widest uppercase"
       >
-        Sources · {sources.length}
+        Sources <span className="font-mono text-accent/80">{sources.length}</span>
         {sources.length > 4 && (expanded ? <ChevronUp size={9} /> : <ChevronDown size={9} />)}
       </button>
       <div className="flex flex-wrap gap-1.5">
@@ -129,7 +105,7 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
         {!expanded && sources.length > 4 && (
           <button
             onClick={() => setExpanded(true)}
-            className="inline-flex items-center h-[26px] px-2.5 rounded-md border border-dashed border-border text-2xs text-text-muted hover:text-text-secondary hover:border-border-strong transition-all"
+            className="inline-flex items-center h-[26px] px-2.5 rounded border border-dashed border-border text-2xs text-text-muted hover:text-text-secondary hover:border-accent/40 transition-all"
           >
             +{sources.length - 4} more
           </button>
@@ -139,27 +115,19 @@ function Sources({ sources }: { sources: AnswerSource[] }) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Loading skeleton — three lines of varying width
-// ---------------------------------------------------------------------------
-
 function AnswerSkeleton() {
   return (
-    <div className="space-y-2.5 py-1">
-      {[100, 83, 67].map((w, i) => (
+    <div className="space-y-3 py-1">
+      {[92, 75, 55].map((w, i) => (
         <div
           key={i}
-          className="h-[13px] bg-bg-elevated rounded animate-pulse"
-          style={{ width: `${w}%`, animationDelay: `${i * 120}ms` }}
+          className="h-[11px] bg-bg-elevated rounded-full animate-pulse"
+          style={{ width: `${w}%`, animationDelay: `${i * 100}ms`, opacity: 1 - i * 0.15 }}
         />
       ))}
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Single conversation turn
-// ---------------------------------------------------------------------------
 
 function TurnBlock({ turn }: { turn: Turn }) {
   const { question, answer } = turn
@@ -201,42 +169,52 @@ function TurnBlock({ turn }: { turn: Turn }) {
 
   const handleCopy = useCallback(() => {
     void copyTextToClipboard(answer.text).then((didCopy) => {
-      if (!didCopy) {
-        return
-      }
-
+      if (!didCopy) return
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
   }, [answer.text, copyTextToClipboard])
 
   return (
-    <div className="animate-fade-up py-8 border-b border-border/40 last:border-0">
+    <div className="animate-fade-up py-8 border-b border-border/25 last:border-0">
 
-      {/* ── Question ── */}
-      <div className="flex justify-end mb-6">
+      {/* ── Question bubble ── */}
+      <div className="flex justify-end mb-7">
         <div
-          className="max-w-[78%] px-4 py-3 rounded-xl text-sm font-medium text-text-primary leading-relaxed"
-          style={{ background: 'rgb(var(--color-bg-elevated))', border: '1px solid rgb(var(--color-border))' }}
+          className="max-w-[76%] px-4 py-3 rounded-xl text-sm font-medium text-text-primary leading-relaxed"
+          style={{
+            background: 'linear-gradient(135deg, rgb(var(--color-bg-elevated)) 0%, rgb(var(--color-bg-surface)) 100%)',
+            border: '1px solid rgb(var(--color-border-strong))',
+            boxShadow: '0 1px 4px rgb(0 0 0 / 0.06)',
+          }}
         >
           {question}
         </div>
       </div>
 
-      {/* ── Answer ── */}
-      <div className="flex gap-3.5">
-        {/* Icon column */}
+      {/* ── Answer area ── */}
+      <div className="flex gap-4">
+        {/* Sparkles column */}
         <div className="flex-shrink-0 pt-0.5">
-          <div className="w-6 h-6 rounded-md border border-accent/25 bg-accent/8 flex items-center justify-center">
+          <div
+            className="w-[26px] h-[26px] rounded-lg flex items-center justify-center"
+            style={{
+              background: 'rgb(var(--color-accent) / 0.08)',
+              border: '1px solid rgb(var(--color-accent) / 0.18)',
+            }}
+          >
             {isLoading || isStreaming
-              ? <Loader2 size={11} className="text-accent animate-spin" />
-              : <Sparkles size={11} className="text-accent" />
+              ? <Loader2 size={12} className="text-accent animate-spin" />
+              : <Sparkles size={12} className="text-accent" />
             }
           </div>
         </div>
 
-        {/* Content column */}
-        <div className="flex-1 min-w-0">
+        {/* Content column with left accent line */}
+        <div
+          className="flex-1 min-w-0 pl-4"
+          style={{ borderLeft: '2px solid rgb(var(--color-accent) / 0.15)' }}
+        >
           {isLoading && <AnswerSkeleton />}
 
           {(isStreaming || isDone) && answer.text && (
@@ -261,7 +239,7 @@ function TurnBlock({ turn }: { turn: Turn }) {
           )}
 
           {isDone && answer.text && (
-            <div className="flex items-center gap-2 mt-4">
+            <div className="flex items-center gap-2 mt-5">
               <button
                 onClick={handleCopy}
                 className="flex items-center gap-1.5 h-6 px-2.5 rounded text-2xs text-text-muted hover:text-text-primary hover:bg-bg-elevated border border-transparent hover:border-border transition-all"
@@ -272,7 +250,7 @@ function TurnBlock({ turn }: { turn: Turn }) {
                 }
               </button>
               {answer.elapsedMs && (
-                <span className="text-2xs text-text-muted font-mono ml-auto opacity-60">
+                <span className="text-2xs text-text-muted font-mono ml-auto opacity-50 tabular-nums">
                   {(answer.elapsedMs / 1000).toFixed(1)}s
                 </span>
               )}
@@ -283,10 +261,6 @@ function TurnBlock({ turn }: { turn: Turn }) {
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Composer — fixed bottom, premium feel
-// ---------------------------------------------------------------------------
 
 interface ComposerProps {
   onSubmit: (q: string) => void
@@ -322,19 +296,24 @@ function Composer({ onSubmit, disabled, inputRef }: ComposerProps) {
   const canSend = !!value.trim() && !disabled
 
   return (
-    <div className="flex-shrink-0 bg-bg-primary px-4 pb-4 pt-3"
-      style={{ boxShadow: '0 -1px 0 rgb(var(--color-border))' }}
+    <div
+      className="flex-shrink-0 px-4 pb-5 pt-3"
+      style={{
+        background: 'rgb(var(--color-bg-primary))',
+        borderTop: '1px solid rgb(var(--color-border) / 0.6)',
+      }}
     >
       <div className="max-w-3xl mx-auto">
         <div
-          className="flex items-end gap-3 bg-bg-surface rounded-xl px-4 py-3 transition-all duration-150"
+          className="flex items-end gap-3 rounded-xl px-4 py-3 transition-all duration-200"
           style={{
+            background: 'rgb(var(--color-bg-surface))',
             border: focused
-              ? '1px solid rgb(var(--color-accent) / 0.4)'
+              ? '1px solid rgb(var(--color-accent) / 0.45)'
               : '1px solid rgb(var(--color-border-strong))',
             boxShadow: focused
-              ? '0 0 0 3px rgb(var(--color-accent) / 0.08)'
-              : '0 1px 3px rgb(0 0 0 / 0.06)',
+              ? '0 0 0 3px rgb(var(--color-accent) / 0.07), 0 2px 8px rgb(0 0 0 / 0.06)'
+              : '0 1px 4px rgb(0 0 0 / 0.05)',
           }}
         >
           <textarea
@@ -347,17 +326,20 @@ function Composer({ onSubmit, disabled, inputRef }: ComposerProps) {
             placeholder="Ask anything about your knowledge base…"
             rows={1}
             disabled={disabled}
-            className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted resize-none focus:outline-none leading-relaxed py-0.5 min-h-[22px] max-h-40 disabled:opacity-40"
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted/60 resize-none focus:outline-none leading-relaxed py-0.5 min-h-[22px] max-h-40 disabled:opacity-40"
           />
           <button
             onClick={submit}
             disabled={!canSend}
             className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 mb-px"
             style={{
-              background: canSend ? 'rgb(var(--color-accent))' : 'rgb(var(--color-bg-elevated))',
+              background: canSend
+                ? 'rgb(var(--color-accent))'
+                : 'rgb(var(--color-bg-elevated))',
               color: canSend ? 'white' : 'rgb(var(--color-text-muted))',
               border: canSend ? 'none' : '1px solid rgb(var(--color-border))',
-              transform: canSend ? 'scale(1)' : 'scale(0.95)',
+              boxShadow: canSend ? '0 1px 3px rgb(var(--color-accent) / 0.35)' : 'none',
+              transform: canSend ? 'scale(1)' : 'scale(0.92)',
             }}
           >
             {disabled
@@ -367,17 +349,13 @@ function Composer({ onSubmit, disabled, inputRef }: ComposerProps) {
           </button>
         </div>
 
-        <p className="text-center text-2xs text-text-muted/60 mt-2 font-mono tracking-wide">
+        <p className="text-center text-2xs text-text-muted/40 mt-2.5 tracking-widest font-mono uppercase select-none">
           ↵ send · ⇧↵ newline · ⌘K focus
         </p>
       </div>
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Main SearchPage
-// ---------------------------------------------------------------------------
 
 export function SearchPage() {
   const currentOrg = useAuthStore(s => s.currentOrg)
@@ -449,15 +427,19 @@ export function SearchPage() {
           /* ── Empty state ── */
           <div className="flex flex-col items-center justify-center h-full px-6 animate-fade-up">
 
-            {/* Logo mark only */}
-            <div className="mb-7 opacity-90">
-              <IncharjLogo size={32} wordmark={false} />
+            {/* Subtle radial glow behind logo */}
+            <div className="relative mb-8">
+              <div
+                className="absolute inset-0 -m-8 rounded-full blur-2xl opacity-25 pointer-events-none"
+                style={{ background: 'radial-gradient(circle, rgb(var(--color-accent)) 0%, transparent 70%)' }}
+              />
+              <IncharjLogo size={34} wordmark={false} />
             </div>
 
-            <h1 className="text-[1.6rem] font-semibold text-text-primary tracking-tight mb-2 text-center leading-tight">
+            <h1 className="text-[1.65rem] font-semibold text-text-primary tracking-tight mb-2.5 text-center leading-tight">
               Ask anything
             </h1>
-            <p className="text-sm text-text-muted text-center mb-10 max-w-[340px] leading-relaxed">
+            <p className="text-sm text-text-muted text-center mb-10 max-w-[320px] leading-relaxed">
               Search across connected documents and conversations using natural language.
             </p>
 
@@ -467,16 +449,47 @@ export function SearchPage() {
                 <button
                   key={text}
                   onClick={() => handleSuggestion(text)}
-                  className="animate-fade-up flex items-start gap-3 px-4 py-3.5 bg-bg-surface border border-border rounded-xl text-left hover:border-border-strong hover:shadow-sm hover:-translate-y-px transition-all duration-150 group"
-                  style={{ animationDelay: `${i * 50}ms` }}
+                  className="animate-fade-up flex items-start gap-3 px-4 py-3.5 text-left rounded-xl transition-all duration-150 group"
+                  style={{
+                    background: 'rgb(var(--color-bg-surface))',
+                    border: '1px solid rgb(var(--color-border))',
+                    animationDelay: `${i * 55}ms`,
+                  }}
+                  onMouseEnter={e => {
+                    const el = e.currentTarget
+                    el.style.borderColor = 'rgb(var(--color-accent) / 0.3)'
+                    el.style.background = 'rgb(var(--color-bg-elevated))'
+                    el.style.boxShadow = '0 2px 8px rgb(0 0 0 / 0.06)'
+                    el.style.transform = 'translateY(-1px)'
+                  }}
+                  onMouseLeave={e => {
+                    const el = e.currentTarget
+                    el.style.borderColor = ''
+                    el.style.background = ''
+                    el.style.boxShadow = ''
+                    el.style.transform = ''
+                  }}
                 >
-                  <Icon size={13} className="flex-shrink-0 text-text-muted group-hover:text-accent transition-colors mt-0.5" />
+                  <div
+                    className="flex-shrink-0 w-[26px] h-[26px] rounded-lg flex items-center justify-center mt-0.5"
+                    style={{
+                      background: 'rgb(var(--color-bg-elevated))',
+                      border: '1px solid rgb(var(--color-border-subtle))',
+                    }}
+                  >
+                    <Icon size={12} className="text-text-muted group-hover:text-accent transition-colors" />
+                  </div>
                   <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors leading-relaxed">
                     {text}
                   </span>
                 </button>
               ))}
             </div>
+
+            {/* Keyboard hint */}
+            <p className="mt-10 text-2xs text-text-muted/40 tracking-widest font-mono uppercase select-none">
+              ⌘K to focus
+            </p>
           </div>
 
         ) : (
