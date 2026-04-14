@@ -1,469 +1,466 @@
-import React, { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import {
-  Search,
-  ExternalLink,
-  X,
+  ArrowUp,
+  Sparkles,
+  Loader2,
   AlertCircle,
-  SlidersHorizontal,
-  ChevronLeft,
-  ChevronRight,
+  Copy,
+  Check,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  MessageSquare,
+  Users,
+  BookOpen,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
-import { useOrgSlug } from '../hooks/useOrgSlug'
-import { useSearch } from '../hooks/useSearch'
-import { connectorsService } from '../services/connectors'
+import { useAuthStore } from '../stores/authStore'
+import { useAIAnswer, type AnswerSource, type AIAnswerState } from '../hooks/useAIAnswer'
 import { TopBar } from '../components/layout/TopBar'
-import { Badge } from '../components/ui/Badge'
-import { SkeletonList } from '../components/ui/SkeletonList'
-import { EmptyState } from '../components/ui/EmptyState'
+import { IncharjLogo } from '../components/ui/IncharjLogo'
 import { ConnectorIcon } from '../components/ui/ConnectorIcon'
-import { FileTypeIcon } from '../components/ui/FileTypeIcon'
-import type { SearchResult, Connector } from '../types'
 
-function renderSnippet(snippet: string) {
-  const parts = snippet.split(/<<(.*?)>>/g)
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <mark
-        key={i}
-        className="bg-yellow-400/20 text-yellow-300 rounded px-0.5 not-italic"
-      >
-        {part}
-      </mark>
-    ) : (
-      part
-    )
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface Turn {
+  id: number
+  question: string
+  answer: AIAnswerState
+}
+
+// ---------------------------------------------------------------------------
+// Suggestion chips — each with an icon for visual anchoring
+// ---------------------------------------------------------------------------
+
+const SUGGESTIONS = [
+  { icon: FileText,      text: 'What is our refund policy?' },
+  { icon: MessageSquare, text: "Summarise last week's Slack discussion" },
+  { icon: Users,         text: 'Who owns the onboarding process?' },
+  { icon: BookOpen,      text: 'What are our engineering principles?' },
+]
+
+// ---------------------------------------------------------------------------
+// Streaming cursor — a refined ink blink
+// ---------------------------------------------------------------------------
+
+function StreamingCursor() {
+  return (
+    <span
+      className="inline-block w-px h-[1.1em] bg-text-secondary ml-0.5 align-text-bottom animate-pulse"
+      aria-hidden="true"
+    />
   )
 }
 
-interface SearchResultItemProps {
-  result: SearchResult
-  isSelected: boolean
-  onSelect: () => void
+// ---------------------------------------------------------------------------
+// Answer text — bold + citation markers
+// ---------------------------------------------------------------------------
+
+function AnswerText({ text, streaming }: { text: string; streaming: boolean }) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\[[0-9]+\])/g)
+  return (
+    <p className="text-sm text-text-primary leading-[1.75] tracking-[0.01em]">
+      {parts.map((part, i) => {
+        if (/^\*\*[^*]+\*\*$/.test(part))
+          return <strong key={i} className="font-semibold text-text-primary">{part.slice(2, -2)}</strong>
+        if (/^\[[0-9]+\]$/.test(part))
+          return (
+            <sup key={i} className="text-accent text-[9px] font-bold ml-0.5 cursor-default select-none">
+              {part}
+            </sup>
+          )
+        return <span key={i}>{part}</span>
+      })}
+      {streaming && <StreamingCursor />}
+    </p>
+  )
 }
 
-function SearchResultItem({ result, isSelected, onSelect }: SearchResultItemProps) {
-  const relativeDate = result.mtime
-    ? formatDistanceToNow(new Date(result.mtime), { addSuffix: true })
-    : null
+// ---------------------------------------------------------------------------
+// Source pill — compact, document-like
+// ---------------------------------------------------------------------------
 
-  function handleClick() {
-    onSelect()
-    if (result.url) {
-      window.open(result.url, '_blank', 'noopener,noreferrer')
+function SourcePill({ source }: { source: AnswerSource }) {
+  const label = source.title.replace(/[*#_`]/g, '').split('\n')[0].slice(0, 44)
+  const inner = (
+    <span className="flex items-center gap-1.5">
+      <span className="flex-shrink-0 w-[18px] h-[18px] rounded-full bg-text-primary/8 text-text-secondary text-[8px] font-bold flex items-center justify-center font-mono">
+        {source.ref}
+      </span>
+      <ConnectorIcon kind={source.connector} size={10} />
+      <span className="truncate max-w-[130px] text-text-secondary group-hover:text-text-primary transition-colors">
+        {label}
+      </span>
+      {source.url && (
+        <ExternalLink size={8} className="text-text-muted flex-shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" />
+      )}
+    </span>
+  )
+
+  const cls = "group inline-flex items-center h-[26px] px-2.5 rounded-md border border-border bg-bg-surface hover:border-border-strong hover:shadow-sm transition-all text-xs"
+
+  return source.url
+    ? <a href={source.url} target="_blank" rel="noopener noreferrer" className={cls}>{inner}</a>
+    : <span className={cls} title={source.snippet}>{inner}</span>
+}
+
+// ---------------------------------------------------------------------------
+// Sources section
+// ---------------------------------------------------------------------------
+
+function Sources({ sources }: { sources: AnswerSource[] }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!sources.length) return null
+  const visible = expanded ? sources : sources.slice(0, 4)
+
+  return (
+    <div className="mt-4 pt-3 border-t border-border/40">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-1 text-2xs font-medium text-text-muted hover:text-text-secondary mb-2.5 transition-colors tracking-wide uppercase"
+      >
+        Sources · {sources.length}
+        {sources.length > 4 && (expanded ? <ChevronUp size={9} /> : <ChevronDown size={9} />)}
+      </button>
+      <div className="flex flex-wrap gap-1.5">
+        {visible.map(s => <SourcePill key={s.ref} source={s} />)}
+        {!expanded && sources.length > 4 && (
+          <button
+            onClick={() => setExpanded(true)}
+            className="inline-flex items-center h-[26px] px-2.5 rounded-md border border-dashed border-border text-2xs text-text-muted hover:text-text-secondary hover:border-border-strong transition-all"
+          >
+            +{sources.length - 4} more
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Loading skeleton — three lines of varying width
+// ---------------------------------------------------------------------------
+
+function AnswerSkeleton() {
+  return (
+    <div className="space-y-2.5 py-1">
+      {[100, 83, 67].map((w, i) => (
+        <div
+          key={i}
+          className="h-[13px] bg-bg-elevated rounded animate-pulse"
+          style={{ width: `${w}%`, animationDelay: `${i * 120}ms` }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Single conversation turn
+// ---------------------------------------------------------------------------
+
+function TurnBlock({ turn }: { turn: Turn }) {
+  const { question, answer } = turn
+  const [copied, setCopied] = useState(false)
+  const isStreaming = answer.status === 'streaming'
+  const isLoading   = answer.status === 'loading'
+  const isDone      = answer.status === 'done'
+  const isEmpty     = answer.status === 'empty'
+  const isError     = answer.status === 'error'
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(answer.text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [answer.text])
+
+  return (
+    <div className="animate-fade-up py-8 border-b border-border/40 last:border-0">
+
+      {/* ── Question ── */}
+      <div className="flex justify-end mb-6">
+        <div
+          className="max-w-[78%] px-4 py-3 rounded-xl text-sm font-medium text-text-primary leading-relaxed"
+          style={{ background: 'rgb(var(--color-bg-elevated))', border: '1px solid rgb(var(--color-border))' }}
+        >
+          {question}
+        </div>
+      </div>
+
+      {/* ── Answer ── */}
+      <div className="flex gap-3.5">
+        {/* Icon column */}
+        <div className="flex-shrink-0 pt-0.5">
+          <div className="w-6 h-6 rounded-md border border-accent/25 bg-accent/8 flex items-center justify-center">
+            {isLoading || isStreaming
+              ? <Loader2 size={11} className="text-accent animate-spin" />
+              : <Sparkles size={11} className="text-accent" />
+            }
+          </div>
+        </div>
+
+        {/* Content column */}
+        <div className="flex-1 min-w-0">
+          {isLoading && <AnswerSkeleton />}
+
+          {(isStreaming || isDone) && answer.text && (
+            <AnswerText text={answer.text} streaming={isStreaming} />
+          )}
+
+          {isEmpty && (
+            <p className="text-sm text-text-muted italic leading-relaxed">
+              No relevant information found in your connected sources.
+            </p>
+          )}
+
+          {isError && (
+            <div className="flex items-start gap-2 py-1">
+              <AlertCircle size={13} className="text-error flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-error leading-relaxed">{answer.error}</p>
+            </div>
+          )}
+
+          {(isStreaming || isDone) && answer.sources.length > 0 && (
+            <Sources sources={answer.sources} />
+          )}
+
+          {isDone && answer.text && (
+            <div className="flex items-center gap-2 mt-4">
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 h-6 px-2.5 rounded text-2xs text-text-muted hover:text-text-primary hover:bg-bg-elevated border border-transparent hover:border-border transition-all"
+              >
+                {copied
+                  ? <><Check size={10} className="text-success" /> Copied</>
+                  : <><Copy size={10} /> Copy</>
+                }
+              </button>
+              {answer.elapsedMs && (
+                <span className="text-2xs text-text-muted font-mono ml-auto opacity-60">
+                  {(answer.elapsedMs / 1000).toFixed(1)}s
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Composer — fixed bottom, premium feel
+// ---------------------------------------------------------------------------
+
+interface ComposerProps {
+  onSubmit: (q: string) => void
+  disabled: boolean
+  inputRef: React.RefObject<HTMLTextAreaElement>
+}
+
+function Composer({ onSubmit, disabled, inputRef }: ComposerProps) {
+  const [value, setValue] = useState('')
+  const [focused, setFocused] = useState(false)
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      submit()
     }
   }
 
-  return (
-    <div
-      onClick={handleClick}
-      className={[
-        'flex flex-col gap-2 px-5 py-4 border-b border-border cursor-pointer transition-colors',
-        isSelected ? 'bg-bg-elevated' : 'hover:bg-bg-surface/50',
-      ].join(' ')}
-    >
-      {/* Title row */}
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-medium text-text-primary leading-tight truncate">
-              {result.title || 'Untitled'}
-            </h3>
-            {result.url && (
-              <ExternalLink
-                size={11}
-                className="text-text-muted flex-shrink-0 opacity-60"
-              />
-            )}
-          </div>
-        </div>
-        {relativeDate && (
-          <span className="text-2xs text-text-muted font-mono flex-shrink-0">
-            {relativeDate}
-          </span>
-        )}
-      </div>
-
-      {/* Snippet */}
-      <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">
-        {renderSnippet(result.snippet)}
-      </p>
-
-      {/* Meta row */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5">
-          <ConnectorIcon kind={result.connector_kind} size={12} />
-          <span className="text-2xs font-mono text-text-muted">{result.connector_name}</span>
-        </div>
-        <span className="text-text-muted text-2xs">·</span>
-        <div className="flex items-center gap-1">
-          <FileTypeIcon ext={result.ext} kind={result.kind} size={12} />
-          <Badge variant="default">{result.kind}</Badge>
-          {result.ext && <Badge variant="default">.{result.ext}</Badge>}
-        </div>
-        {result.author_name && (
-          <>
-            <span className="text-text-muted text-2xs">·</span>
-            <span className="text-2xs text-text-muted">{result.author_name}</span>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-interface FiltersRowProps {
-  connectors: Connector[]
-  selectedConnector: string
-  selectedKind: string
-  onConnectorChange: (v: string) => void
-  onKindChange: (v: string) => void
-  onClear: () => void
-  hasFilters: boolean
-}
-
-function FiltersRow({
-  connectors,
-  selectedConnector,
-  selectedKind,
-  onConnectorChange,
-  onKindChange,
-  onClear,
-  hasFilters,
-}: FiltersRowProps) {
-  return (
-    <div className="border-b border-border bg-bg-surface">
-      <div className="max-w-6xl mx-auto flex items-center gap-2 px-5 py-2 flex-wrap">
-      <SlidersHorizontal size={12} className="text-text-muted" />
-
-      <select
-        value={selectedConnector}
-        onChange={(e) => onConnectorChange(e.target.value)}
-        className="h-6 text-xs bg-bg-elevated text-text-secondary border border-border rounded px-2 focus:outline-none focus:border-accent cursor-pointer"
-      >
-        <option value="">All connectors</option>
-        {connectors.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={selectedKind}
-        onChange={(e) => onKindChange(e.target.value)}
-        className="h-6 text-xs bg-bg-elevated text-text-secondary border border-border rounded px-2 focus:outline-none focus:border-accent cursor-pointer"
-      >
-        <option value="">All types</option>
-        <option value="document">Document</option>
-        <option value="page">Page</option>
-        <option value="message">Message</option>
-        <option value="spreadsheet">Spreadsheet</option>
-        <option value="presentation">Presentation</option>
-      </select>
-
-      {hasFilters && (
-        <button
-          onClick={onClear}
-          className="flex items-center gap-1 h-6 px-2 text-2xs text-text-muted hover:text-error border border-border rounded hover:border-error/30 transition-colors"
-        >
-          <X size={10} />
-          Clear
-        </button>
-      )}
-      </div>
-    </div>
-  )
-}
-
-function Pagination({
-  page,
-  totalPages,
-  total,
-  pageSize,
-  onPageChange,
-}: {
-  page: number
-  totalPages: number
-  total: number
-  pageSize: number
-  onPageChange: (p: number) => void
-}) {
-  const from = (page - 1) * pageSize + 1
-  const to = Math.min(page * pageSize, total)
-
-  const pages: (number | 'ellipsis')[] = []
-  const range = new Set<number>()
-  range.add(1)
-  range.add(totalPages)
-  for (let i = Math.max(1, page - 2); i <= Math.min(totalPages, page + 2); i++) range.add(i)
-  const sorted = Array.from(range).sort((a, b) => a - b)
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) pages.push('ellipsis')
-    pages.push(sorted[i])
+  function submit() {
+    const q = value.trim()
+    if (!q || disabled) return
+    onSubmit(q)
+    setValue('')
+    if (inputRef.current) inputRef.current.style.height = 'auto'
   }
 
+  function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setValue(e.target.value)
+    e.target.style.height = 'auto'
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`
+  }
+
+  const canSend = !!value.trim() && !disabled
+
   return (
-    <div className="flex items-center justify-between px-5 py-2.5 border-t border-border bg-bg-surface flex-shrink-0">
-      <span className="text-2xs text-text-muted font-mono">
-        {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}
-      </span>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onPageChange(page - 1)}
-          disabled={page === 1}
-          className="w-7 h-7 flex items-center justify-center rounded border border-border text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+    <div className="flex-shrink-0 bg-bg-primary px-4 pb-4 pt-3"
+      style={{ boxShadow: '0 -1px 0 rgb(var(--color-border))' }}
+    >
+      <div className="max-w-3xl mx-auto">
+        <div
+          className="flex items-end gap-3 bg-bg-surface rounded-xl px-4 py-3 transition-all duration-150"
+          style={{
+            border: focused
+              ? '1px solid rgb(var(--color-accent) / 0.4)'
+              : '1px solid rgb(var(--color-border-strong))',
+            boxShadow: focused
+              ? '0 0 0 3px rgb(var(--color-accent) / 0.08)'
+              : '0 1px 3px rgb(0 0 0 / 0.06)',
+          }}
         >
-          <ChevronLeft size={13} />
-        </button>
-        {pages.map((p, i) =>
-          p === 'ellipsis' ? (
-            <span key={`e${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-text-muted">…</span>
-          ) : (
-            <button
-              key={p}
-              onClick={() => onPageChange(p)}
-              className={[
-                'w-7 h-7 flex items-center justify-center rounded text-xs transition-colors',
-                p === page
-                  ? 'bg-accent/10 text-accent border border-accent/20 font-medium'
-                  : 'border border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated',
-              ].join(' ')}
-            >
-              {p}
-            </button>
-          )
-        )}
-        <button
-          onClick={() => onPageChange(page + 1)}
-          disabled={page === totalPages}
-          className="w-7 h-7 flex items-center justify-center rounded border border-border text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ChevronRight size={13} />
-        </button>
+          <textarea
+            ref={inputRef}
+            value={value}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder="Ask anything about your knowledge base…"
+            rows={1}
+            disabled={disabled}
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted resize-none focus:outline-none leading-relaxed py-0.5 min-h-[22px] max-h-40 disabled:opacity-40"
+          />
+          <button
+            onClick={submit}
+            disabled={!canSend}
+            className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 mb-px"
+            style={{
+              background: canSend ? 'rgb(var(--color-accent))' : 'rgb(var(--color-bg-elevated))',
+              color: canSend ? 'white' : 'rgb(var(--color-text-muted))',
+              border: canSend ? 'none' : '1px solid rgb(var(--color-border))',
+              transform: canSend ? 'scale(1)' : 'scale(0.95)',
+            }}
+          >
+            {disabled
+              ? <Loader2 size={13} className="animate-spin" />
+              : <ArrowUp size={14} />
+            }
+          </button>
+        </div>
+
+        <p className="text-center text-2xs text-text-muted/60 mt-2 font-mono tracking-wide">
+          ↵ send · ⇧↵ newline · ⌘K focus
+        </p>
       </div>
     </div>
   )
 }
 
+// ---------------------------------------------------------------------------
+// Main SearchPage
+// ---------------------------------------------------------------------------
+
 export function SearchPage() {
-  const orgSlug = useOrgSlug()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const currentOrg = useAuthStore(s => s.currentOrg)
+  const orgId = currentOrg?.id ?? null
 
-  const {
-    query,
-    setQuery,
-    filters,
-    updateFilter,
-    clearFilters,
-    page,
-    setPage,
-    totalPages,
-    pageSize,
-    selectedIndex,
-    setSelectedIndex,
-    navigateResults,
-    openSelected,
-    results,
-    total,
-    isLoading,
-    isFetching,
-    isError,
-    hasQuery,
-  } = useSearch({ orgSlug })
+  const { state: streamState, ask, reset } = useAIAnswer(orgId)
 
-  const connectorsQuery = useQuery({
-    queryKey: ['connectors', orgSlug],
-    queryFn: () => connectorsService.list(orgSlug),
-    staleTime: 60 * 1000,
-  })
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [activeTurnId, setActiveTurnId] = useState<number | null>(null)
+  const turnCounter = useRef(0)
 
-  // Global keyboard shortcut Cmd+K
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const threadEndRef = useRef<HTMLDivElement>(null)
+
+  // Cmd+K focuses input
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         inputRef.current?.focus()
-        inputRef.current?.select()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // Arrow key navigation in results
-  const handleSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        navigateResults('down')
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        navigateResults('up')
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        openSelected(results)
-      } else if (e.key === 'Escape') {
-        inputRef.current?.blur()
-        setSelectedIndex(-1)
-      }
-    },
-    [navigateResults, openSelected, results, setSelectedIndex]
-  )
+  // Sync streaming state into the active turn
+  useEffect(() => {
+    if (activeTurnId === null) return
+    setTurns(prev =>
+      prev.map(t => t.id === activeTurnId ? { ...t, answer: streamState } : t)
+    )
+  }, [streamState, activeTurnId])
 
-  const hasFilters = !!(filters.connector_id || filters.kind)
+  // Auto-scroll to bottom as answer streams in
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [turns])
+
+  function handleSubmit(question: string) {
+    reset()
+    const id = ++turnCounter.current
+    const newTurn: Turn = {
+      id,
+      question,
+      answer: { status: 'loading', text: '', sources: [], error: null, elapsedMs: null },
+    }
+    setTurns(prev => [...prev, newTurn])
+    setActiveTurnId(id)
+    ask(question)
+  }
+
+  function handleSuggestion(q: string) {
+    inputRef.current?.focus()
+    handleSubmit(q)
+  }
+
+  const isStreaming = streamState.status === 'loading' || streamState.status === 'streaming'
+  const hasConversation = turns.length > 0
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <TopBar
-        crumbs={[{ label: 'Search' }]}
-      />
+    <div className="flex flex-col h-full overflow-hidden bg-bg-primary">
+      <TopBar crumbs={[{ label: 'Search' }]} />
 
-      {/* Search bar */}
-      <div className="border-b border-border bg-bg-surface">
-      <div className="max-w-6xl mx-auto px-5 py-4">
-        <div className="relative flex items-center">
-          <Search
-            size={16}
-            className="absolute left-4 text-text-muted pointer-events-none"
-          />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search your knowledge base... (⌘K)"
-            className={[
-              'w-full h-12 bg-bg-elevated text-text-primary text-sm',
-              'border border-border rounded-md pl-11 pr-4',
-              'placeholder:text-text-muted',
-              'focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20',
-              'transition-colors duration-150',
-            ].join(' ')}
-            autoFocus
-          />
-          {query && (
-            <button
-              onClick={() => setQuery('')}
-              className="absolute right-3 text-text-muted hover:text-text-secondary transition-colors"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-        </div>
-      </div>
-
-      {/* Filters row */}
-      <FiltersRow
-        connectors={connectorsQuery.data ?? []}
-        selectedConnector={filters.connector_id ?? ''}
-        selectedKind={filters.kind ?? ''}
-        onConnectorChange={(v) => updateFilter('connector_id', v || undefined)}
-        onKindChange={(v) => updateFilter('kind', v || undefined)}
-        onClear={clearFilters}
-        hasFilters={hasFilters}
-      />
-
-      {/* Results */}
+      {/* Thread / empty state */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        <div className="max-w-6xl mx-auto">
-        {/* Results count */}
-        {hasQuery && !isLoading && !isError && results.length > 0 && (
-          <div className="px-5 py-2 border-b border-border">
-            <p className="text-xs text-text-muted font-mono">
-              {total.toLocaleString()} result{total !== 1 ? 's' : ''} for{' '}
-              <span className="text-text-secondary">"{query}"</span>
-            </p>
-          </div>
-        )}
+        {!hasConversation ? (
 
-        {/* Loading state */}
-        {isLoading && <SkeletonList count={6} />}
+          /* ── Empty state ── */
+          <div className="flex flex-col items-center justify-center h-full px-6 animate-fade-up">
 
-        {/* Error state */}
-        {isError && !isLoading && (
-          <EmptyState
-            icon={<AlertCircle size={36} />}
-            title="Search failed"
-            description="Unable to fetch search results. Please try again."
-          />
-        )}
-
-        {/* Empty state — no query */}
-        {!hasQuery && !isLoading && (
-          <div className="flex flex-col items-center justify-center h-full py-24 text-center px-6">
-            <div className="w-12 h-12 rounded-md bg-bg-elevated border border-border flex items-center justify-center mb-5">
-              <Search size={20} className="text-text-muted" />
+            {/* Logo mark only */}
+            <div className="mb-7 opacity-90">
+              <IncharjLogo size={32} wordmark={false} />
             </div>
-            <h2 className="text-base font-medium text-text-secondary mb-2">
-              Search your knowledge base
-            </h2>
-            <p className="text-sm text-text-muted max-w-sm">
-              Type a query to search across your connected Google Drive knowledge.
+
+            <h1 className="text-[1.6rem] font-semibold text-text-primary tracking-tight mb-2 text-center leading-tight">
+              Ask anything
+            </h1>
+            <p className="text-sm text-text-muted text-center mb-10 max-w-[340px] leading-relaxed">
+              Search across connected documents and conversations using natural language.
             </p>
-            <div className="flex items-center gap-1.5 mt-6 text-xs text-text-muted font-mono border border-border rounded px-3 py-1.5">
-              <span className="bg-bg-elevated border border-border rounded px-1.5 py-0.5 text-text-secondary">⌘K</span>
-              <span>to focus search</span>
+
+            {/* 2×2 suggestion grid */}
+            <div className="grid grid-cols-2 gap-2 w-full max-w-[480px]">
+              {SUGGESTIONS.map(({ icon: Icon, text }, i) => (
+                <button
+                  key={text}
+                  onClick={() => handleSuggestion(text)}
+                  className="animate-fade-up flex items-start gap-3 px-4 py-3.5 bg-bg-surface border border-border rounded-xl text-left hover:border-border-strong hover:shadow-sm hover:-translate-y-px transition-all duration-150 group"
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  <Icon size={13} className="flex-shrink-0 text-text-muted group-hover:text-accent transition-colors mt-0.5" />
+                  <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors leading-relaxed">
+                    {text}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
-        )}
 
-        {/* No results */}
-        {hasQuery && !isLoading && !isError && results.length === 0 && (
-          <EmptyState
-            icon={<Search size={36} />}
-            title="No results found"
-            description={`No documents match "${query}". Try different keywords or check your connectors.`}
-          />
-        )}
+        ) : (
 
-        {/* Results list */}
-        {!isLoading && !isError && results.length > 0 && (
-          <div className={isFetching ? 'opacity-60 transition-opacity' : ''}>
-            {results.map((result, idx) => (
-              <SearchResultItem
-                key={result.id}
-                result={result}
-                isSelected={idx === selectedIndex}
-                onSelect={() => setSelectedIndex(idx)}
-              />
+          /* ── Conversation thread ── */
+          <div className="max-w-3xl mx-auto w-full px-6 pb-6">
+            {turns.map(turn => (
+              <TurnBlock key={turn.id} turn={turn} />
             ))}
+            <div ref={threadEndRef} />
           </div>
+
         )}
-        </div>
       </div>
 
-      {/* Pagination + keyboard hints */}
-      {hasQuery && results.length > 0 && (
-        <div className="border-t border-border bg-bg-surface flex-shrink-0">
-          {total > pageSize && (
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              pageSize={pageSize}
-              onPageChange={(p) => { setPage(p); setSelectedIndex(-1) }}
-            />
-          )}
-          <div className="px-5 py-2 flex items-center gap-4 border-t border-border/50">
-            <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
-              <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">↑↓</kbd>
-              <span>navigate</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
-              <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">↵</kbd>
-              <span>open</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-2xs text-text-muted font-mono">
-              <kbd className="bg-bg-elevated border border-border rounded px-1 py-0.5">Esc</kbd>
-              <span>dismiss</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Fixed composer */}
+      <Composer onSubmit={handleSubmit} disabled={isStreaming} inputRef={inputRef} />
     </div>
   )
 }
