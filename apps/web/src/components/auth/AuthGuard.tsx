@@ -10,7 +10,7 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { user, accessToken, setAuth, logout } = useAuthStore()
+  const { user, accessToken, setAuthPreserveOrg, logout } = useAuthStore()
   const [isChecking, setIsChecking] = useState(true)
   const [initialized, setInitialized] = useState<boolean | null>(null)
 
@@ -38,7 +38,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         useAuthStore.getState().updateToken(refreshData.access_token)
         const userData = await authService.me()
         if (cancelled) return
-        setAuth(userData, refreshData.access_token)
+        setAuthPreserveOrg(userData, refreshData.access_token)
       } catch {
         if (!cancelled) logout()
       } finally {

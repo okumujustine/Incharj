@@ -7,6 +7,7 @@ interface AuthState {
   accessToken: string | null
   currentOrg: OrgSummary | null
   setAuth: (user: User, token: string) => void
+  setAuthPreserveOrg: (user: User, token: string) => void
   setCurrentOrg: (org: OrgSummary) => void
   updateToken: (token: string) => void
   logout: () => void
@@ -20,6 +21,9 @@ export const useAuthStore = create<AuthState>()(
       currentOrg: null,
 
       setAuth: (user, token) =>
+        set({ user, accessToken: token, currentOrg: null }),
+
+      setAuthPreserveOrg: (user, token) =>
         set((state) => ({ user, accessToken: token, currentOrg: state.currentOrg })),
 
       setCurrentOrg: (org) =>
