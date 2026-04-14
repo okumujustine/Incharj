@@ -170,12 +170,45 @@ function TurnBlock({ turn }: { turn: Turn }) {
   const isEmpty     = answer.status === 'empty'
   const isError     = answer.status === 'error'
 
+  const copyTextToClipboard = useCallback(async (text: string) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        return true
+      }
+    } catch {
+      // Fall through to manual copy fallback.
+    }
+
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    textArea.setAttribute('readonly', '')
+    textArea.style.position = 'fixed'
+    textArea.style.opacity = '0'
+    textArea.style.pointerEvents = 'none'
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+
+    try {
+      return document.execCommand('copy')
+    } catch {
+      return false
+    } finally {
+      document.body.removeChild(textArea)
+    }
+  }, [])
+
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(answer.text).then(() => {
+    void copyTextToClipboard(answer.text).then((didCopy) => {
+      if (!didCopy) {
+        return
+      }
+
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
-  }, [answer.text])
+  }, [answer.text, copyTextToClipboard])
 
   return (
     <div className="animate-fade-up py-8 border-b border-border/40 last:border-0">
