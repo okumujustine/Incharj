@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
+import { useAuthStore } from '../stores/authStore'
+import apiClient from '../services/api'
 
 export interface AnswerSource {
   ref: number
   title: string
   url: string | null
-  location: string        // connector name or channel
-  connector: string       // 'slack' | 'google_drive'
+  location: string
+  connector: string
   kind: string
   snippet: string
 }
@@ -20,95 +22,103 @@ export interface AIAnswerState {
   elapsedMs: number | null
 }
 
-const DEBOUNCE_MS = 600        // longer than search debounce so FTS fires first
-const TIMEOUT_MS  = 45_000
+const TIMEOUT_MS = 45_000
 
-export function useAIAnswer(query: string, orgId: string | null): AIAnswerState {
-  const [state, setState] = useState<AIAnswerState>({
-    status: 'idle',
-    text: '',
-    sources: [],
-    error: null,
-    elapsedMs: null,
-  })
+const IDLE: AIAnswerState = {
+  status: 'idle',
+  text: '',
+  sources: [],
+  error: null,
+  elapsedMs: null,
+}
 
-  const abortRef  = useRef<AbortController | null>(null)
-  const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const startRef  = useRef<number>(0)
+export function useAIAnswer(orgId: string | null) {
+  const [state, setState] = useState<AIAnswerState>(IDLE)
+  const abortRef = useRef<AbortController | null>(null)
 
-  useEffect(() => {
-    // Clear any pending debounce
-    if (timerRef.current) clearTimeout(timerRef.current)
+  const ask = useCallback(
+    (query: string) => {
+      const trimmed = query.trim()
+      if (!trimmed || !orgId) return
 
-    const trimmed = query.trim()
-    if (!trimmed || !orgId) {
-      abortRef.current?.abort()
-      setState({ status: 'idle', text: '', sources: [], error: null, elapsedMs: null })
-      return
-    }
-
-    timerRef.current = setTimeout(() => {
+      // Cancel any in-flight request
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
-      startRef.current = Date.now()
+      const startMs = Date.now()
 
-      // Timeout guard
+      setState({ status: 'loading', text: '', sources: [], error: null, elapsedMs: null })
+
       const timeoutId = setTimeout(() => {
         controller.abort()
         setState(s =>
           s.status === 'streaming'
-            ? { ...s, status: s.text ? 'done' : 'error', error: s.text ? null : 'Request timed out. Please try again.' }
+            ? { ...s, status: s.text ? 'done' : 'error', error: s.text ? null : 'Request timed out.' }
             : s
         )
       }, TIMEOUT_MS)
 
-      setState({ status: 'loading', text: '', sources: [], error: null, elapsedMs: null })
+      _stream(trimmed, orgId, controller, timeoutId, setState, startMs)
+    },
+    [orgId]
+  )
 
-      stream(trimmed, orgId, controller, timeoutId, setState, startRef)
-    }, DEBOUNCE_MS)
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [query, orgId])
-
-  // Abort on unmount
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
+  const reset = useCallback(() => {
+    abortRef.current?.abort()
+    setState(IDLE)
   }, [])
 
-  return state
+  return { state, ask, reset }
 }
 
-async function stream(
+function _fetchStream(
+  query: string,
+  orgId: string,
+  token: string | null,
+  controller: AbortController
+): Promise<Response> {
+  return fetch(`/api/v1/search/ai-stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({ query, org_id: orgId }),
+    signal: controller.signal,
+  })
+}
+
+async function _stream(
   query: string,
   orgId: string,
   controller: AbortController,
   timeoutId: ReturnType<typeof setTimeout>,
   setState: React.Dispatch<React.SetStateAction<AIAnswerState>>,
-  startRef: React.MutableRefObject<number>
+  startMs: number
 ) {
   try {
-    const apiBase = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_URL
-    if (!apiBase) throw new Error('VITE_API_URL is required')
-    const response = await fetch(`${apiBase}/api/v1/search/ai-stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ query, org_id: orgId }),
-      signal: controller.signal,
-    })
+    let token = useAuthStore.getState().accessToken
+    let response = await _fetchStream(query, orgId, token, controller)
+
+    if (response.status === 401) {
+      try {
+        const refreshResponse = await apiClient.post<{ access_token: string }>('/auth/refresh')
+        token = refreshResponse.data.access_token
+        useAuthStore.getState().updateToken(token)
+        response = await _fetchStream(query, orgId, token, controller)
+      } catch {
+        clearTimeout(timeoutId)
+        useAuthStore.getState().logout()
+        window.location.href = '/login'
+        return
+      }
+    }
 
     if (!response.ok) {
       clearTimeout(timeoutId)
-      setState(s => ({ ...s, status: 'error', error: `Search failed (${response.status})` }))
+      setState(s => ({ ...s, status: 'error', error: `Request failed (${response.status})` }))
       return
     }
 
@@ -126,45 +136,38 @@ async function stream(
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''   // keep incomplete line in buffer
+      buffer = lines.pop() ?? ''
 
       for (const line of lines) {
         if (!line.startsWith('data:')) continue
         const raw = line.slice(5).trim()
         if (raw === '[DONE]') {
           clearTimeout(timeoutId)
-          const elapsed = Date.now() - startRef.current
           setState(s => ({
             ...s,
             status: s.text.trim() ? 'done' : 'empty',
             sources: parsedSources,
-            elapsedMs: elapsed,
+            elapsedMs: Date.now() - startMs,
           }))
           return
         }
-
         try {
           const parsed: { delta?: string; sources?: AnswerSource[] } = JSON.parse(raw)
-          if (parsed.sources) {
-            parsedSources.push(...parsed.sources)
-          }
+          if (parsed.sources) parsedSources.push(...parsed.sources)
           if (parsed.delta) {
             fullText += parsed.delta
             setState(s => ({ ...s, text: fullText }))
           }
-        } catch {
-          // malformed chunk — skip
-        }
+        } catch { /* malformed chunk */ }
       }
     }
 
-    // Stream ended without [DONE]
     clearTimeout(timeoutId)
     setState(s => ({
       ...s,
       status: fullText.trim() ? 'done' : 'empty',
       sources: parsedSources,
-      elapsedMs: Date.now() - startRef.current,
+      elapsedMs: Date.now() - startMs,
     }))
   } catch (err: unknown) {
     clearTimeout(timeoutId)
@@ -174,7 +177,7 @@ async function stream(
       ...s,
       status: s.text ? 'done' : 'error',
       error: s.text ? null : msg,
-      elapsedMs: Date.now() - startRef.current,
+      elapsedMs: Date.now() - startMs,
     }))
   }
 }
