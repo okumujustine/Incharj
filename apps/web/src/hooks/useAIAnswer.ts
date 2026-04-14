@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
+import { useAuthStore } from '../stores/authStore'
+import apiClient from '../services/api'
 
 export interface AnswerSource {
   ref: number
@@ -69,6 +71,25 @@ export function useAIAnswer(orgId: string | null) {
   return { state, ask, reset }
 }
 
+function _fetchStream(
+  query: string,
+  orgId: string,
+  token: string | null,
+  controller: AbortController
+): Promise<Response> {
+  return fetch(`/api/v1/search/ai-stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    credentials: 'include',
+    body: JSON.stringify({ query, org_id: orgId }),
+    signal: controller.signal,
+  })
+}
+
 async function _stream(
   query: string,
   orgId: string,
@@ -78,19 +99,22 @@ async function _stream(
   startMs: number
 ) {
   try {
-    const token = (await import('../stores/authStore')).useAuthStore.getState().accessToken
+    let token = useAuthStore.getState().accessToken
+    let response = await _fetchStream(query, orgId, token, controller)
 
-    const response = await fetch(`/api/v1/search/ai-stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      },
-      credentials: 'include',
-      body: JSON.stringify({ query, org_id: orgId }),
-      signal: controller.signal,
-    })
+    if (response.status === 401) {
+      try {
+        const refreshResponse = await apiClient.post<{ access_token: string }>('/auth/refresh')
+        token = refreshResponse.data.access_token
+        useAuthStore.getState().updateToken(token)
+        response = await _fetchStream(query, orgId, token, controller)
+      } catch {
+        clearTimeout(timeoutId)
+        useAuthStore.getState().logout()
+        window.location.href = '/login'
+        return
+      }
+    }
 
     if (!response.ok) {
       clearTimeout(timeoutId)
