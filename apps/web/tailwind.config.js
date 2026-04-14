@@ -33,14 +33,19 @@ export default {
         error:   'rgb(var(--color-error) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        mono: ['DM Mono', 'JetBrains Mono', 'Fira Code', 'monospace'],
       },
       fontSize: {
         '2xs': '0.625rem',
       },
       borderRadius: {
-        DEFAULT: '2px',
+        DEFAULT: '4px',
+        sm:  '3px',
+        md:  '6px',
+        lg:  '8px',
+        xl:  '12px',
+        full: '9999px',
       },
     },
   },
