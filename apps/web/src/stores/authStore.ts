@@ -20,7 +20,7 @@ export const useAuthStore = create<AuthState>()(
       currentOrg: null,
 
       setAuth: (user, token) =>
-        set({ user, accessToken: token, currentOrg: null }),
+        set((state) => ({ user, accessToken: token, currentOrg: state.currentOrg })),
 
       setCurrentOrg: (org) =>
         set({ currentOrg: org }),
