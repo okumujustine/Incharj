@@ -98,3 +98,9 @@
 .animate-fade-up   { animation: fade-up  0.3s ease both; }
 .animate-fade-in   { animation: fade-in  0.2s ease both; }
 .animate-scale-in  { animation: scale-in 0.2s ease both; }
+
+@keyframes slide-progress {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(150%); }
+  100% { transform: translateX(400%); }
+}
