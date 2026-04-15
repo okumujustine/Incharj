@@ -129,8 +129,10 @@ async def ai_search_stream(
         # 2. Load prior history from DB (never trust the frontend for this)
         history = await conversation_service.load_history(conn, conv_id, limit=10)
 
-        # 3. Persist the incoming user message
+        # 3. Persist the incoming user message and auto-title on first turn
         await conversation_service.add_message(conn, conv_id, "user", body.message)
+        if not history:
+            await conversation_service.set_title(conn, conv_id, conversation_service.make_title(body.message))
 
         # 4. Rewrite query for retrieval if this is a follow-up
         search_query = await _rewrite_query(body.message, history, client)
@@ -220,3 +222,24 @@ async def search(
         })
 
     return result
+
+
+@router.get("/conversations")
+async def list_conversations(
+    org_id: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conversation_service.list_conversations(conn, org_id)
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def get_conversation_messages(
+    conversation_id: str,
+    org_id: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conversation_service.get_messages(conn, conversation_id, org_id)
