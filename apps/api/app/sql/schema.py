@@ -260,6 +260,27 @@ DDL_INITIALIZE = """
 
     UPDATE documents SET checksum = content_hash WHERE checksum IS NULL;
 
+    CREATE TABLE IF NOT EXISTS conversations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      title VARCHAR(255),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ix_conversations_org_id ON conversations(org_id);
+    CREATE INDEX IF NOT EXISTS ix_conversations_user_id ON conversations(user_id);
+
+    CREATE TABLE IF NOT EXISTS conversation_messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role VARCHAR(20) NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      retrieval_metadata JSONB
+    );
+    CREATE INDEX IF NOT EXISTS ix_conversation_messages_conversation_id ON conversation_messages(conversation_id);
+
     ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS embedding vector;
     ALTER TABLE embedding_cache ADD COLUMN IF NOT EXISTS embedding vector;
 
