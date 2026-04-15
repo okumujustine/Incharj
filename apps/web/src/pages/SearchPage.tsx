@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Users,
   BookOpen,
+  Plus,
 } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 import { useAIAnswer, type AnswerSource, type AIAnswerState } from '../hooks/useAIAnswer'
@@ -365,6 +366,7 @@ export function SearchPage() {
 
   const [turns, setTurns] = useState<Turn[]>([])
   const [activeTurnId, setActiveTurnId] = useState<number | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const turnCounter = useRef(0)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -390,6 +392,13 @@ export function SearchPage() {
     )
   }, [streamState, activeTurnId])
 
+  // Capture conversation_id when it arrives from the stream
+  useEffect(() => {
+    if (streamState.conversationId && streamState.conversationId !== conversationId) {
+      setConversationId(streamState.conversationId)
+    }
+  }, [streamState.conversationId, conversationId])
+
   // Auto-scroll to bottom as answer streams in
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -401,11 +410,20 @@ export function SearchPage() {
     const newTurn: Turn = {
       id,
       question,
-      answer: { status: 'loading', text: '', sources: [], error: null, elapsedMs: null },
+      answer: { status: 'loading', text: '', sources: [], error: null, elapsedMs: null, conversationId: null },
     }
     setTurns(prev => [...prev, newTurn])
     setActiveTurnId(id)
-    ask(question)
+    ask(question, conversationId)
+  }
+
+  function handleNewConversation() {
+    reset()
+    setTurns([])
+    setActiveTurnId(null)
+    setConversationId(null)
+    turnCounter.current = 0
+    setTimeout(() => inputRef.current?.focus(), 50)
   }
 
   function handleSuggestion(q: string) {
@@ -418,7 +436,20 @@ export function SearchPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-bg-primary">
-      <TopBar crumbs={[{ label: 'Search' }]} />
+      <TopBar
+        crumbs={[{ label: 'Search' }]}
+        actions={
+          hasConversation ? (
+            <button
+              onClick={handleNewConversation}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium text-text-muted hover:text-text-primary hover:bg-bg-elevated border border-transparent hover:border-border transition-all"
+            >
+              <Plus size={11} />
+              New conversation
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Thread / empty state */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">

@@ -11,6 +11,10 @@ build/
 .vite/
 *.tsbuildinfo
 
+# VitePress
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
 # Python
 __pycache__/
 *.py[cod]

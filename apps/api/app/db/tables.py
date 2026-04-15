@@ -196,3 +196,25 @@ embedding_cache = Table(
     Column("embedding", Vector(), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
+
+conversations = Table(
+    "conversations",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("org_id", UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")),
+    Column("title", String(255)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+conversation_messages = Table(
+    "conversation_messages",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("conversation_id", UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False),
+    Column("role", String(20), nullable=False),
+    Column("content", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("retrieval_metadata", JSONB),
+)

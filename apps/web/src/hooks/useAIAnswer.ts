@@ -20,6 +20,7 @@ export interface AIAnswerState {
   sources: AnswerSource[]
   error: string | null
   elapsedMs: number | null
+  conversationId: string | null
 }
 
 const TIMEOUT_MS = 45_000
@@ -30,6 +31,7 @@ const IDLE: AIAnswerState = {
   sources: [],
   error: null,
   elapsedMs: null,
+  conversationId: null,
 }
 
 export function useAIAnswer(orgId: string | null) {
@@ -37,17 +39,24 @@ export function useAIAnswer(orgId: string | null) {
   const abortRef = useRef<AbortController | null>(null)
 
   const ask = useCallback(
-    (query: string) => {
-      const trimmed = query.trim()
+    (message: string, conversationId: string | null) => {
+      const trimmed = message.trim()
       if (!trimmed || !orgId) return
 
-      // Cancel any in-flight request
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
       const startMs = Date.now()
 
-      setState({ status: 'loading', text: '', sources: [], error: null, elapsedMs: null })
+      setState(prev => ({
+        status: 'loading',
+        text: '',
+        sources: [],
+        error: null,
+        elapsedMs: null,
+        // Preserve conversationId so it's available during the turn
+        conversationId: prev.conversationId,
+      }))
 
       const timeoutId = setTimeout(() => {
         controller.abort()
@@ -58,7 +67,7 @@ export function useAIAnswer(orgId: string | null) {
         )
       }, TIMEOUT_MS)
 
-      _stream(trimmed, orgId, controller, timeoutId, setState, startMs)
+      _stream(trimmed, orgId, conversationId, controller, timeoutId, setState, startMs)
     },
     [orgId]
   )
@@ -72,8 +81,9 @@ export function useAIAnswer(orgId: string | null) {
 }
 
 function _fetchStream(
-  query: string,
+  message: string,
   orgId: string,
+  conversationId: string | null,
   token: string | null,
   controller: AbortController
 ): Promise<Response> {
@@ -85,14 +95,19 @@ function _fetchStream(
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     },
     credentials: 'include',
-    body: JSON.stringify({ query, org_id: orgId }),
+    body: JSON.stringify({
+      message,
+      org_id: orgId,
+      conversation_id: conversationId ?? undefined,
+    }),
     signal: controller.signal,
   })
 }
 
 async function _stream(
-  query: string,
+  message: string,
   orgId: string,
+  conversationId: string | null,
   controller: AbortController,
   timeoutId: ReturnType<typeof setTimeout>,
   setState: React.Dispatch<React.SetStateAction<AIAnswerState>>,
@@ -100,14 +115,14 @@ async function _stream(
 ) {
   try {
     let token = useAuthStore.getState().accessToken
-    let response = await _fetchStream(query, orgId, token, controller)
+    let response = await _fetchStream(message, orgId, conversationId, token, controller)
 
     if (response.status === 401) {
       try {
         const refreshResponse = await apiClient.post<{ access_token: string }>('/auth/refresh')
         token = refreshResponse.data.access_token
         useAuthStore.getState().updateToken(token)
-        response = await _fetchStream(query, orgId, token, controller)
+        response = await _fetchStream(message, orgId, conversationId, token, controller)
       } catch {
         clearTimeout(timeoutId)
         useAuthStore.getState().logout()
@@ -152,8 +167,18 @@ async function _stream(
           return
         }
         try {
-          const parsed: { delta?: string; sources?: AnswerSource[] } = JSON.parse(raw)
-          if (parsed.sources) parsedSources.push(...parsed.sources)
+          const parsed: {
+            delta?: string
+            sources?: AnswerSource[]
+            conversation_id?: string
+          } = JSON.parse(raw)
+
+          if (parsed.conversation_id) {
+            setState(s => ({ ...s, conversationId: parsed.conversation_id! }))
+          }
+          if (parsed.sources) {
+            parsedSources.push(...parsed.sources)
+          }
           if (parsed.delta) {
             fullText += parsed.delta
             setState(s => ({ ...s, text: fullText }))

@@ -57,9 +57,6 @@ const CONNECTOR_CATALOG: {
     requirements: 'Requires a Slack bot token configured on the server by your admin.',
   },
 ]
-
-// ─── Disconnect Confirm Modal ─────────────────────────────────────────────────
-
 interface PendingDisconnect {
   connectorId: string
   label: string
@@ -172,9 +169,6 @@ function DisconnectConfirmModal({
     </div>
   )
 }
-
-// ─── Connect Error Modal ──────────────────────────────────────────────────────
-
 function ConnectErrorModal({ message, onClose }: { message: string; onClose: () => void }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -213,9 +207,6 @@ function ConnectErrorModal({ message, onClose }: { message: string; onClose: () 
     </div>
   )
 }
-
-// ─── Connector Install Modal ──────────────────────────────────────────────────
-
 function ConnectorInstallModal({
   catalog,
   isInstalled,
@@ -318,9 +309,6 @@ function ConnectorInstallModal({
     </div>
   )
 }
-
-// ─── Add Connector Modal ──────────────────────────────────────────────────────
-
 function AddConnectorModal({
   open,
   onClose,
@@ -502,9 +490,6 @@ function AddConnectorModal({
     </>
   )
 }
-
-// ─── Connector Tile ───────────────────────────────────────────────────────────
-
 interface ConnectorTileProps {
   catalog: (typeof CONNECTOR_CATALOG)[number]
   connector: Connector
@@ -610,9 +595,6 @@ function ConnectorTile({
     </div>
   )
 }
-
-// ─── Empty State ──────────────────────────────────────────────────────────────
-
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-up">
@@ -647,9 +629,6 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
     </div>
   )
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 const OAUTH_CALLBACK_KEY = 'oauth_callback_result'
 
 export function ConnectorsPage() {
