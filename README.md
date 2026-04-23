@@ -1,40 +1,79 @@
 # Incharj
 
-Incharj loads runtime configuration through a provider-agnostic secrets
-bootstrap layer.
+Incharj is a **unified enterprise knowledge system** that connects tools like Google Drive, Slack, and Notion into a single searchable interface.
 
-The bootstrap entrypoint is
-[scripts/run-with-secrets.mjs](./scripts/run-with-secrets.mjs). Today it supports
-`SECRETS_PROVIDER=infisical`, but the repo surface is intentionally generic so we
-can switch providers later by adding another module under
-[`scripts/secrets/providers/`](./scripts/secrets/providers/).
+---
 
-For the full runtime variable checklist, see
-[docs/runtime-configuration.md](./docs/runtime-configuration.md).
+## 🎬 Demo
 
-Start the stack with:
+
+
+https://github.com/user-attachments/assets/1e01727a-8882-487d-8173-29c29852c4bc
+
+
+
+---
+
+## ⚙️ What’s in this repo
+
+* `apps/web` — search UI
+* `apps/api` — FastAPI backend (migration layer)
+* `docs` — documentation
+* `scripts/` — secrets + dev tooling
+* `docker-compose.dev.yml` — local stack
+
+---
+
+## 🚀 Run locally
 
 ```bash
 node ./scripts/run-with-secrets.mjs -- docker compose -f docker-compose.dev.yml up --build
 ```
 
-If you prefer `make`, the main development commands use the same SDK runner:
+or
 
 ```bash
 make up
-make api
-make worker
-make web
-make bot
 ```
 
-| Service  | URL                   |
-|----------|-----------------------|
-| Frontend | http://localhost:3000 |
-| API      | http://localhost:8000 |
-| Docs     | http://localhost:4173 |
-| Postgres | localhost:5432        |
-| Redis    | localhost:6379        |
+---
 
-More detailed setup notes live in [docs/getting-started.md](./docs/getting-started.md)
-and [apps/api/README.md](./apps/api/README.md).
+## 🌐 Local services
+
+* Web: http://localhost:3000
+* API: http://localhost:8000
+* Docs: http://localhost:4173
+
+---
+
+## 🔐 Config
+
+Uses a provider-agnostic secrets runner (Infisical):
+
+```bash
+node ./scripts/run-with-secrets.mjs -- <command>
+```
+
+---
+
+## 🔄 Backend
+
+* FastAPI sits in front of existing services
+* Routes are migrated incrementally
+
+---
+
+## 🧱 Stack
+
+* TypeScript, Python
+* FastAPI
+* PostgreSQL, Redis
+* Docker
+
+---
+
+## 👤 Author
+
+Justine Okumu
+https://github.com/okumujustine
+https://okumujustine.com
